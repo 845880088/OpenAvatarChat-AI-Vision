@@ -201,10 +201,18 @@ class ClientHandlerRtc(ClientHandlerBase):
         if frontend_path.exists():
             logger.info(f"Serving frontend from {frontend_path}")
             fastapi.mount('/ui', StaticFiles(directory=frontend_path), name="static")
-            fastapi.add_route('/', RedirectResponse(url='/ui/index.html'))
+            
+            # 添加根路径重定向 - 使用GET方法明确定义
+            @fastapi.get('/')
+            async def root_redirect():
+                logger.info("Root path accessed, redirecting to /ui/index.html")
+                return RedirectResponse(url='/ui/index.html', status_code=302)
         else:
             logger.warning(f"Frontend directory {frontend_path} does not exist")
-            fastapi.add_route('/', RedirectResponse(url='/gradio'))
+            @fastapi.get('/')
+            async def root_redirect():
+                logger.info("Root path accessed, redirecting to /gradio")
+                return RedirectResponse(url='/gradio', status_code=302)
 
         if parent_block is None:
             parent_block = ui

@@ -1,0 +1,105 @@
+# ============================================================================
+# OpenAvatarChat 简化配置文件 - LAM 3D数字人一键启动版
+# ============================================================================
+# 
+# 【配置说明】
+# - 简化版配置：一键启动，无需额外配置API Key
+# - LAM 3D数字人：超写实3D效果，客户端渲染技术
+# - 预设模型：阿里云 Qwen3-Max + Edge TTS
+# - 启动方式：双击 01运行程序-lam.bat 或 python src/glut.py --config config/glut.yaml
+# 
+# 【API配置】
+# ✅ 已预设API：阿里云 Qwen3-Max模型（硬编码API Key）
+# ❌ TTS无需API：免费Edge TTS
+# 
+# 【硬件需求】
+# - 服务端算力：极低（4核CPU + 8GB内存 + <2GB显存）
+# - 客户端要求：支持WebGL的现代浏览器
+# - 网络访问：仅本地访问 (127.0.0.1:8282)
+# 
+# 【适用场景】
+# ✅ 快速体验、演示展示、个人测试、无需复杂配置
+# ⚠️ 注意：API Key硬编码，仅适合体验，不适合生产环境
+#
+# ============================================================================
+
+default:
+  logger:
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
+  service:
+    host: "127.0.0.1"  # 服务监听地址：仅本地访问（一键启动版安全设置）
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件
+    
+  chat_engine:
+    model_root: "models"           # 模型文件根目录
+    handler_search_path:
+      - "src/handlers"             # Handler搜索路径
+    handler_configs:
+    
+      # ====================================================================
+      # 客户端Handler - H5端侧渲染（LAM 3D数字人）
+      # ====================================================================
+      LamClient:
+        module: client/h5_rendering_client/client_handler_lam
+        asset_path: "lam_samples/status.zip"  # 3D数字人资产（src\handlers\client\h5_rendering_client\lam_samples）
+        concurrent_limit: 5                     # 最大并发连接数（LAM优势）
+        turn_config:
+          turn_provider: "turn_server"
+          urls: 
+            - "stun:stun.l.google.com:19302"
+            - "stun:stun1.l.google.com:19302"
+          username: ""
+          credential: ""
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理）
+      # ====================================================================
+      SileroVad:
+        module: vad/silerovad/vad_handler_silero
+        speaking_threshold: 0.5      # 语音检测阈值（0-1）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理）  
+      # ====================================================================
+      SenseVoice:
+        enabled: True
+        module: asr/sensevoice/asr_handler_sensevoice
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，支持中英文
+        
+      # ====================================================================
+      # TTS Handler - 微软Edge TTS（免费云端服务）
+      # ====================================================================  
+      Edge_TTS:
+        enabled: True
+        module: tts/edgetts/tts_handler_edgetts
+        voice: "zh-CN-YunyangNeural"        # 中文男声（温和）
+        # 其他音色选择：zh-CN-XiaoxiaoNeural(女声), zh-CN-YunxiNeural(男声)等
+        
+      # ====================================================================
+      # LLM Handler - 阿里云 Qwen3-Max模型（已预设API Key）
+      # ====================================================================
+      LLM_Bailian:  # 注意：命名为Bailian，实际使用阿里云DashScope API
+        enabled: True
+        module: llm/openai_compatible/llm_handler_openai_compatible
+        model_name: "qwen3-max"    # 阿里云通义千问3-Max模型
+        enable_video_input: true                 # 启用视频输入理解
+        system_prompt: "请你扮演一个 AI 助手，用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要讨论标点符号相关的内容"
+        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 阿里云DashScope API地址
+        # api_key: ""  # API Key，留空则从环境变量 DASHSCOPE_API_KEY 读取
+        
+        # 其他可选API（注释掉）：
+        # api_url: 'http://127.0.0.1:11434/v1'                      # Ollama本地API
+        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/' # Google Gemini
+        
+      # ====================================================================
+      # Avatar Handler - LAM 3D表情驱动（本地推理）
+      # ====================================================================
+      LAM_Driver:
+        module: avatar/lam/avatar_handler_lam_audio2expression  # 音频转3D表情参数

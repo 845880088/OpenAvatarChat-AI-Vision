@@ -15,11 +15,23 @@
 ## 🔥 Core Highlights
 - **Multimodal language model: Supports multimodal language models including text, audio, video, etc.**
 - **Modular design: Uses modular design, allowing flexible component replacement to achieve different function combinations.**
+- **🆕 AI Automation Assistant: Control your computer with natural language - AI can "see" screen content and intelligently execute operations.**
+- **🆕 Screen Sharing: Real-time screen sharing with AI analysis for intelligent interaction.**
+- **🆕 TURN Server Integration: Comprehensive NAT traversal support for stable cross-network connections.**
+- **🆕 Modern Frontend: Responsive interface built with Vue3+TypeScript, supports multi-device access.**
 
 ## 📢 News
 
 ### Changelog
 
+- [2025.11.10] 🔥🔥🔥 AI Automation Assistant Integration:
+  - **AI Automation Assistant**: New integration of Qwen-VL-based computer control
+    - ✅ **Natural Language Control**: Control computer with simple natural language commands
+    - ✅ **Visual Understanding**: AI can "see" screen content and intelligently decide next steps
+    - ✅ **Real-time Feedback**: WebSocket real-time push of execution progress and AI analysis
+    - ✅ **Beautiful Interface**: Modern control panel based on Ant Design Vue
+    - ✅ **Safe & Controllable**: Support stop execution anytime, prevent misoperations
+  - **Use Cases**: Open apps, browser operations, text editing, system operations, etc.
 - [2025.08.19] ⭐️⭐️⭐️ Version 0.5.1 Released:
   - LiteAvatar support multi-session. Please refer to LiteAvatar configuration part below.
   - Add support for the Qwen-Omni multimodal model, using the Qwen-Omni-Realtime API service of BaiLian. For the configuration file, please refer to this [config](#chat_with_qwen_omniyaml).
@@ -51,6 +63,110 @@
 - [ ] Refine documentation and video tutorials
 - [ ] Integrate Live2D digital humans
 - [ ] Integrate 3D digital humans
+
+## 🤖 AI Automation Assistant
+
+### Features
+OpenAvatarChat v0.6+ integrates powerful AI automation capabilities to control your computer with natural language:
+
+- **🎯 Natural Language Control**: Control computer operations with simple natural language commands
+- **🧠 Visual Understanding**: Integrated Qwen-VL-Max model - AI can "see" and understand screen content
+- **🔄 Real-time Feedback**: WebSocket real-time push of execution progress, AI analysis, and operation history
+- **🎨 Beautiful Interface**: Modern control panel based on Ant Design Vue
+- **🔒 Safe & Controllable**: Support stop execution anytime, set maximum step limit
+
+### Quick Start
+
+#### 1. Configure API Key
+Edit `agent_function_call/config.py`:
+```python
+DASHSCOPE_API_KEY = "sk-your-api-key-here"  # Fill in your Alibaba Cloud DashScope API Key
+```
+
+Get API Key: Visit [Alibaba Cloud DashScope Platform](https://dashscope.aliyun.com/)
+
+#### 2. Start Service
+Use any launcher (recommended with vision features):
+```bash
+04运行程序-lam-VL.bat
+```
+
+#### 3. Start Using
+- Visit: `https://127.0.0.1:8282`
+- Click the **"🤖 AI Automation Assistant"** button in the bottom right corner
+- Enter task commands and start execution!
+
+### Usage Examples
+
+#### Open Application
+```
+Open Notepad
+```
+
+#### Browser Operations
+```
+Open browser and search for OpenAI
+```
+
+#### Text Editing
+```
+Open Notepad, type "Hello World", then save to desktop
+```
+
+#### System Operations
+```
+Open WeChat
+```
+
+### Interface Description
+
+Control panel includes:
+1. **Task Input Area** - Enter natural language commands
+2. **Control Buttons** - Start Execution / Stop Execution
+3. **Status Display** - Progress bar, current step, execution history
+4. **AI Analysis** - Display AI's understanding of the screen
+
+### Safety Tips
+
+⚠️ **Important Warning**:
+1. AI will actually control your computer
+2. Make sure you understand the task before execution
+3. Not recommended to execute unverified complex tasks
+4. Can click "Stop Execution" to interrupt at any time
+5. Recommended to try in test environment first
+
+### Technical Architecture
+
+```
+Frontend (Vue 3 + Ant Design Vue)
+     ↓ HTTP API
+Backend (FastAPI)
+     ↓
+AI Agent Service (agent_automation_service.py)
+     ↓
+Computer Control (agent_function_call.py)
+     ↓
+Qwen-VL-Max + pynput (AI Analysis + Operation Execution)
+```
+
+### Troubleshooting
+
+**Issue 1: Cannot Start Task**
+- Check if API Key is correctly configured
+- Confirm backend service is running
+- Check browser console for error messages
+
+**Issue 2: Click Position Inaccurate**
+- Check screen resolution settings in `config.py`
+- Ensure settings match actual screen resolution
+
+**Issue 3: WebSocket Connection Failed**
+- Confirm backend service is running normally
+- Check firewall settings
+
+### Detailed Documentation
+- 📖 [AI Automation Assistant User Guide](agent_function_call/AI自动化助手使用指南.md)
+- 🔧 [Integration Technical Documentation](OpenAvatarChat-WebUI/AI自动化助手集成说明.md)
 
 ## Demo
 
@@ -91,12 +207,13 @@ HuggingFace
 ## 🚨 FAQ
 Frequently asked questions encountered during the course of the project can be found at [link](./docs/FAQ.md)
 
-## 📖 Contents <!-- omit in toc -->
+## 📖 Contents <!-- o in toc -->
 
 - [🔥 Core Highlights](#-core-highlights)
 - [📢 News](#-news)
   - [Changelog](#changelog)
   - [Todo List](#todo-list)
+- [🤖 AI Automation Assistant](#-ai-automation-assistant)
 - [Demo](#demo)
   - [Try it Online](#try-it-online)
   - [Demo Video](#demo-video)
@@ -341,7 +458,7 @@ Use MiniCPM-o-2.6 as audio2audio chat model, it need enough VRAM and GPU computa
 > git submodule update --init --recursive
 > ```
 > 
-> If you encounter any issues, feel free to submit an [issue](https://github.com/HumanAIGC-Engineering/OpenAvatarChat/issues) to us.
+> If you encounter any issues, feel free to sub an [issue](https://github.com/HumanAIGC-Engineering/OpenAvatarChat/issues) to us.
 > 
 > This project depends on CUDA, please make sure that the CUDA version supported by the local NVIDIA driver is >= 12.4
 
@@ -446,7 +563,7 @@ src/handlers/client/h5_rendering_client/lam_samples. The selected asset should b
 LamClient:
   module: client/h5_rendering_client/client_handler_lam
   asset_path: "lam_samples/barbara.zip"
-  concurrent_limit: 5
+  concurrent_li: 5
 ```
 
 ### OpenAI Compatible LLM Handler
@@ -588,9 +705,9 @@ LiteAvatar:
 ```
 
 #### Multi-Session Support
-LiteAvatar supports multiple sessions on a single machine. To enable this feature, refer to `config/chat_with_openai_compatible_bailian_cosyvoice.yaml` and set the `default.chan_engine.concurrent_limit` parameter. By configuring this parameter, you predefine the maximum number of concurrent sessions supported at startup.
+LiteAvatar supports multiple sessions on a single machine. To enable this feature, refer to `config/chat_with_openai_compatible_bailian_cosyvoice.yaml` and set the `default.chan_engine.concurrent_li` parameter. By configuring this parameter, you predefine the maximum number of concurrent sessions supported at startup.
 
-Please note that running multiple sessions significantly increases system resource demands. When LiteAvatar runs on a GPU, each concurrent session consumes approximately 3GB of GPU memory. Setting `concurrent_limit` too high may lead to **out-of-memory errors**. Please adjust the number of concurrent sessions according to your machine's hardware specifications.
+Please note that running multiple sessions significantly increases system resource demands. When LiteAvatar runs on a GPU, each concurrent session consumes approximately 3GB of GPU memory. Setting `concurrent_li` too high may lead to **out-of-memory errors**. Please adjust the number of concurrent sessions according to your machine's hardware specifications.
 
 
 ### LAM Avatar Driver Handler
@@ -841,10 +958,35 @@ Current implemented handler provide following configs:
 ## Star History
 ![](https://api.star-history.com/svg?repos=HumanAIGC-Engineering/OpenAvatarChat&type=Date)
 
+## Acknowledgments and Declarations
+
+### Based on OpenAvatarChat Project
+
+This project is based on [OpenAvatarChat](https://github.com/HumanAIGC-Engineering/OpenAvatarChat) with modifications and extensions.
+
+**Original Project Information:**
+- **Project Name**: OpenAvatarChat
+- **Project URL**: https://github.com/HumanAIGC-Engineering/OpenAvatarChat
+- **Original Authors**: Gang Cheng, Tao Chen, Feng Wang, Binchao Huang, Hui Xu, Guanqiao He, Yi Lu, Shengyin Tan
+- **License**: Apache License 2.0
+
+**Main Modifications and Extensions in This Project:**
+- Integrated Qwen-VL-based AI automation assistant functionality
+- Enhanced screen sharing and AI analysis capabilities
+- Optimized frontend interface and user experience
+- Added more use cases and examples
+
+Thanks to the OpenAvatarChat team for providing an excellent open-source project!
+
+### License
+
+This project is licensed under the Apache License 2.0.
+
 ## Citation
 
-If you found OpenAvatarChat helpful in your research/project, we would appreciate a Star⭐ and citation✏️
+If you found this project helpful in your research/project, we would appreciate a Star⭐
 
+**Cite the Original Project:**
 ```
 @software{avatarchat2025,
   author = {Gang Cheng, Tao Chen, Feng Wang, Binchao Huang, Hui Xu, Guanqiao He, Yi Lu, Shengyin Tan},

@@ -1,0 +1,108 @@
+# ============================================================================
+# OpenAvatarChat 简化配置文件 - MuseTalk 2D数字人一键启动版
+# ============================================================================
+# 
+# 【配置说明】
+# - 简化版配置：一键启动，无需额外配置API Key
+# - MuseTalk 2D数字人：支持自定义底版视频，可换脸定制
+# - 预设模型：智谱AI GLM-4.1V-Thinking-Flash + Edge TTS
+# - 启动方式：双击 03运行程序-musetalk.bat 或 python src/glut.py --config config/glut3.yaml
+# 
+# 【API配置】
+# ✅ 已预设API：智谱AI GLM-4.1V模型（硬编码API Key）
+# ❌ TTS无需API：免费Edge TTS
+# 
+# 【硬件需求】
+# - 服务端算力：中等（i7+ CPU + 8GB内存 + 8GB+显存）
+# - Avatar渲染：约4GB显存（MuseTalk推理需求）
+# - 网络访问：仅本地访问 (127.0.0.1:8282)
+# 
+# 【适用场景】
+# ✅ 快速体验、自定义形象、个性化数字人、内容创作
+# ⚠️ 注意：API Key硬编码，仅适合体验，不适合生产环境
+#
+# ============================================================================
+
+default:
+  logger:
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
+  service:
+    host: "127.0.0.1"  # 服务监听地址：仅本地访问（一键启动版安全设置）
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件
+    
+  chat_engine:
+    model_root: "models"           # 模型文件根目录
+    handler_search_path:
+      - "src/handlers"             # Handler搜索路径
+    handler_configs:
+    
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（MuseTalk 2D数字人）
+      # ====================================================================
+      RtcClient:
+        module: client/rtc_client/client_handler_rtc
+        # connection_ttl: 900      # 会话超时时间（使用默认值）
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理）
+      # ====================================================================
+      SileroVad:
+        module: vad/silerovad/vad_handler_silero
+        speaking_threshold: 0.5      # 语音检测阈值（0-1）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理）  
+      # ====================================================================
+      SenseVoice:
+        enabled: True
+        module: asr/sensevoice/asr_handler_sensevoice
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，支持中英文
+        
+      # ====================================================================
+      # TTS Handler - 微软Edge TTS（免费云端服务）
+      # ====================================================================  
+      Edge_TTS:
+        enabled: True
+        module: tts/edgetts/tts_handler_edgetts
+        voice: "zh-CN-XiaoxiaoNeural"       # 中文女声（甜美）
+        # 其他音色选择：zh-CN-YunyangNeural(男声), zh-CN-YunxiNeural(男声温和)等
+        
+      # ====================================================================
+      # LLM Handler - 智谱AI GLM模型（已预设API Key）
+      # ====================================================================
+      LLM_Bailian:  # 注意：命名为Bailian但实际是智谱AI
+        enabled: True
+        module: llm/openai_compatible/llm_handler_openai_compatible
+        model_name: "GLM-4.1V-Thinking-Flash"    # 智谱AI思维链模型
+        enable_video_input: True                 # 启用视频输入理解
+        system_prompt: "请你扮演一个 AI 助手，用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要讨论标点符号相关的内容"
+        api_url: "https://open.bigmodel.cn/api/paas/v4"  # 智谱AI API地址
+        api_key: "a0038ae26e3b47f7b0d8b960c1f1fe2e.yQ8agRjhefo82h6e"  # 预设API Key（一键启动）
+        
+        # 其他可选API（注释掉）：
+        # api_url: 'http://127.0.0.1:11434/v1'                      # Ollama本地API
+        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/' # Google Gemini
+        
+      # ====================================================================
+      # Avatar Handler - MuseTalk 2D数字人（可换脸定制）
+      # ====================================================================
+      AvatarMusetalk:
+        module: avatar/musetalk/avatar_handler_musetalk
+        fps: 16                                 # 视频帧率（MuseTalk推荐16fps平衡效果和性能）
+        batch_size: 16                         # 批处理帧数（影响显存占用和推理速度）
+        avatar_video_path: "src/handlers/avatar/musetalk/MuseTalk/data/video/yongen.mp4"  # 初始化底版视频路径
+        avatar_model_dir: "models/musetalk/avatar_model"  # 数字人模型目录
+        force_create_avatar: false             # 是否强制重新生成数字人数据
+        debug: false                           # 是否启用调试模式
+        multi_thread_inference: true           # 双线程推理（true：UNet+VAE双线程，false：单线程）
+        
+        # 调试选项（可选）：
+        # debug_save_handler_audio: true       # 是否保存音频帧文件
+        # debug_replay_speech_id: "speech-d9o18xrugl6-1"  # 重播语音ID（调试用）

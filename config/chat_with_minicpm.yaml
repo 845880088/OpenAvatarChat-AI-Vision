@@ -1,40 +1,85 @@
+# ============================================================================
+# OpenAvatarChat 配置文件 - MiniCPM-o 完全本地化配置
+# ============================================================================
+# 
+# 【配置说明】
+# - MiniCPM-o：端到端多模态语言模型，支持音频到音频的直接对话
+# - 完全本地化：所有推理在本地进行，数据完全私有，无需任何API
+# - 多模态输入：支持音频+视频输入，实现更丰富的交互体验
+# 
+# 【API需求】
+# ❌ 无需API：完全本地推理，保护数据隐私
+# 
+# 【硬件需求】
+# - 服务端算力：极高（高性能GPU + 20-24GB显存）
+# - 完整版：20GB+显存（RTX 4090, A100等）
+# - INT4量化版：8-12GB显存（RTX 4070Ti以上）
+# 
+# 【适用场景】  
+# ✅ 企业私有化部署、对数据安全要求极高、离线环境
+# ⚠️ 注意：显存需求很高，建议先测试INT4量化版本
+#
+# ============================================================================
+
 default:
   logger:
-    log_level: "INFO"
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
   service:
-    host: "0.0.0.0"
-    port: 8282
-    cert_file: "ssl_certs/localhost.crt"
-    cert_key: "ssl_certs/localhost.key"
+    host: "0.0.0.0"    # 服务监听地址：0.0.0.0允许外网访问
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件（HTTPS必需）
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件（HTTPS必需）
+    
   chat_engine:
-    model_root: "models"
+    model_root: "models"           # 模型文件根目录
+    # concurrent_limit: 1          # 不设置并发限制，MiniCPM-o推荐单路运行
     handler_search_path:
-      - "src/handlers"
+      - "src/handlers"             # Handler搜索路径
     handler_configs:
+    
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（LiteAvatar 2D数字人）
+      # ====================================================================
       RtcClient:
         module: client/rtc_client/client_handler_rtc
-        # max time a session will last for
-        connection_ttl: 900
+        connection_ttl: 900          # 会话超时时间（秒）
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理，无需API）
+      # ====================================================================
       SileroVad:
         module: vad/silerovad/vad_handler_silero
-        speaking_threshold: 0.5
-        start_delay: 2048
-        end_delay: 5000
-        buffer_look_back: 5000
-        speech_padding: 512
+        speaking_threshold: 0.5      # 语音检测阈值（0-1，越低越敏感）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # MiniCPM-o Handler - 多模态端到端模型（本地推理，无需API）
+      # ====================================================================
       MiniCPM-o:
         enabled: True
         module: llm/minicpm/llm_handler_minicpm
-        model_name: "MiniCPM-o-2_6"
-        # model_name: "MiniCPM-o-2_6-int4"
+        model_name: "MiniCPM-o-2_6"          # 完整版模型（需要20GB+显存）
+        # model_name: "MiniCPM-o-2_6-int4"   # INT4量化版（需要8-12GB显存）
+        
+        # 语音提示词设置
         voice_prompt: "你是一个AI助手。你能接受视频，音频和文本输入并输出语音和文本。模仿输入音频中的声音特征。"
         assistant_prompt: "作为助手，你将使用这种声音风格说话。"
-        enable_video_input: True
-        skip_video_frame: 2
+        
+        # 多模态输入配置
+        enable_video_input: True     # 启用视频输入（会显著增加显存占用）
+        skip_video_frame: 2          # 视频跳帧数：0=全帧，-1=每秒最后帧，>0=跳n帧
+        
+      # ====================================================================
+      # Avatar Handler - 2D数字人渲染（建议CPU模式以节省显存）
+      # ====================================================================
       LiteAvatar:
         module: avatar/liteavatar/avatar_handler_liteavatar
-        avatar_name: 20250408/sample_data
-        fps: 25
-        debug: false
-        enable_fast_mode: false
-        use_gpu: false
+        avatar_name: 20250408/sample_data    # 数字人形象名称
+        fps: 25                             # 渲染帧率
+        debug: false                        # 调试模式开关
+        enable_fast_mode: false             # 快速模式开关
+        use_gpu: false                      # 建议使用CPU渲染以节省显存给MiniCPM-o

@@ -1,0 +1,126 @@
+# ============================================================================
+# OpenAvatarChat 配置文件 - 生产环境推荐配置（支持视觉理解）
+# ============================================================================
+# 
+# 【配置说明】
+# - LiteAvatar 2D数字人：高质量2D数字人，稳定可靠
+# - 视觉理解功能：支持摄像头输入，可理解图像内容进行对话
+# - 云端API：LLM和TTS都使用阿里云百炼API，高质量语音合成
+# - 生产推荐：适合中小规模部署，支持2路并发，技术门槛低
+# 
+# 【API需求】
+# ✅ 必需API：阿里云百炼 DASHSCOPE_API_KEY
+#    - LLM：Qwen3-VL-Plus模型（支持视觉理解）
+#    - TTS：百炼CosyVoice（高质量语音合成）
+# 
+# 【硬件需求】
+# - 服务端算力：中等（i7+ CPU + 12GB内存 + 6-12GB显存）
+# - 并发限制：2路并发，每路约3GB显存，12GB显卡可充分利用
+# - 客户端要求：支持WebRTC的现代浏览器 + 摄像头
+# 
+# 【适用场景】
+# ✅ 视觉问答、图像理解、客服系统、教育应用、智能监控
+# ⚠️ 注意：依赖云端服务稳定性，需要良好网络环境和摄像头权限
+#
+# ============================================================================
+
+default:
+  logger:
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
+  service:
+    host: "0.0.0.0"    # 服务监听地址：0.0.0.0允许外网访问
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件（HTTPS必需）
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件（HTTPS必需）
+    
+  chat_engine:
+    model_root: "models"           # 模型文件根目录
+    concurrent_limit: 1            # 最大并发会话数（LiteAvatar推荐1-3路）
+    handler_search_path:
+      - "src/handlers"             # Handler搜索路径
+    handler_configs:
+      
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（支持视频输入+2D数字人）
+      # ====================================================================
+      RtcClient:
+        module: client/rtc_client/client_handler_rtc
+        connection_ttl: 900          # 会话超时时间（秒）
+        turn_config:
+          turn_provider: "turn_server"
+          urls: 
+            # 稳定的Google STUN服务器
+            - "stun:stun.l.google.com:19302"
+            - "stun:stun1.l.google.com:19302"
+            # 自建TURN服务器（阿里云ECS）
+            - "turn:8.138.87.249:3478"
+          username: "username"
+          credential: "password"
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理，无需API）
+      # ====================================================================
+      SileroVad:
+        module: vad/silerovad/vad_handler_silero
+        speaking_threshold: 0.5      # 语音检测阈值（0-1，越低越敏感）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 10000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理，无需API）  
+      # ====================================================================
+      SenseVoice:
+        enabled: True
+        module: asr/sensevoice/asr_handler_sensevoice
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，支持中英文
+        
+      # ====================================================================
+      # TTS Handler - 百炼CosyVoice语音合成（需要百炼API）
+      # ====================================================================  
+      CosyVoice:
+        enabled: True
+        module: tts/bailian_tts/tts_handler_cosyvoice_bailian
+        voice: "longfeifei_v2"        # 音色选择：longxiaocheng（男声）, longxiaochun（女声）等
+        model_name: "cosyvoice-v2"   # 百炼CosyVoice模型版本
+        # api_key: ""  # API Key，与LLM共用（生产环境请使用环境变量）
+        
+      # ====================================================================
+      # LLM Handler - 阿里云 Qwen3-VL-Plus模型（支持视觉理解）
+      # ====================================================================
+      LLM_Bailian:  # 注意：命名为Bailian，实际使用阿里云DashScope API
+        enabled: true #注意与dify互斥，不可以同时true
+        module: llm/openai_compatible/llm_handler_openai_compatible
+        model_name: "qwen3-vl-plus"          # 阿里云通义千问3-VL-Plus模型（支持视觉）
+        enable_video_input: True             # 启用视频输入理解（支持摄像头画面分析）
+        history_length: 10                   # 对话历史保留条数
+        system_prompt: "你是AI助手，用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要讨论标点符号相关的内容"
+        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 阿里云DashScope API地址
+        # api_key: ""  # 预设API Key（生产环境请使用环境变量）
+      
+      Dify:  #dify工作流模式
+        enabled: false #注意要把上面的LLM大模型关了，该模式只使用dify工作流的大模型
+        module: llm/dify/llm_handler_dify
+        enable_video_input: false # 是否允许摄像头输入，确保应用支持视觉，并接受 files 输入
+        api_key: 'app-2pvVnDrMzJK4WaDRBJO2sdYB' #your dify api key
+        api_url: 'http://localhost/v1' # your dify api url
+        # 其他可选API（注释掉）：
+        # api_url: 'http://127.0.0.1:11434/v1'                      # Ollama本地API
+        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/' # Google Gemini
+        
+      # ====================================================================
+      # Avatar Handler - LiteAvatar 2D数字人（服务端GPU渲染）
+      # ====================================================================
+      LiteAvatar:
+        module: avatar/liteavatar/avatar_handler_liteavatar
+        avatar_name: 20250408/P1Rr_dybRx_5f4FvVWsSG1hQ    # 2D数字人资产名称（与glut-VL.yaml保持一致）
+        fps: 15                             # 渲染帧率（15-30，根据GPU性能调整）
+        debug: false                        # 调试模式开关
+        enable_fast_mode: true             # 快速模式（可能影响质量）
+        use_gpu: true                       # 是否使用GPU渲染（推荐开启）
+        batch_size: 8                       # 推理批量大小（2路并发优化）
+
+
+ 

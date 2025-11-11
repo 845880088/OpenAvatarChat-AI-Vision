@@ -45,7 +45,7 @@ get_version() {
         #     return
         # fi
         
-        # # Try to get version from nearest tag + commits
+        # # Try to get version from nearest tag + coms
         # local desc_tag=$(git describe --tags --always 2>/dev/null)
         # if [ $? -eq 0 ] && [ -n "$desc_tag" ] && [[ "$desc_tag" == *"-"* ]]; then
         #     # Replace slash with underscore for Docker compatibility
@@ -53,14 +53,14 @@ get_version() {
         #     return
         # fi
         
-        # Fallback: Generate version from branch and short commit
+        # Fallback: Generate version from branch and short com
         local branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-        local commit=$(git rev-parse --short HEAD 2>/dev/null)
+        local com=$(git rev-parse --short HEAD 2>/dev/null)
         
-        if [ -n "$branch" ] && [ -n "$commit" ]; then
+        if [ -n "$branch" ] && [ -n "$com" ]; then
             # Replace slash with underscore for Docker compatibility  
             local clean_branch=$(echo "$branch" | sed 's/\//_/g')
-            echo "${clean_branch}-${commit}"
+            echo "${clean_branch}-${com}"
         else
             echo "unknown-$(date +%Y%m%d)"
         fi
@@ -179,7 +179,7 @@ if eval $BUILD_CMD; then
     # Provide usage instructions
     log_info "=== 使用说明 ==="
     echo ""
-    echo "查看镜像中的commit信息:"
+    echo "查看镜像中的com信息:"
     echo "docker inspect \"${IMAGE_TAG}\" | grep -A 10 'Labels'"
     echo ""
     echo "启动容器:"
@@ -195,7 +195,7 @@ if eval $BUILD_CMD; then
     echo "  --config \"${CONFIG_PATH}\""
     echo ""
     echo "在容器内查看版本信息:"
-    echo "docker run --rm \"${IMAGE_TAG}\" printenv | grep -E '^(APP_VERSION|BUILD_DATE|BUILD_COMMIT)='"
+    echo "docker run --rm \"${IMAGE_TAG}\" printenv | grep -E '^(APP_VERSION|BUILD_DATE|BUILD_COM)='"
     echo ""
     
 else

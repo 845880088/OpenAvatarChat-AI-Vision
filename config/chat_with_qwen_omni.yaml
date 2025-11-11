@@ -1,61 +1,113 @@
+# ============================================================================
+# OpenAvatarChat 配置文件 - Qwen-Omni 端到端语音交互配置
+# ============================================================================
+# 
+# 【配置说明】
+# - Qwen-Omni：阿里云百炼的端到端语音交互模型
+# - 语音到语音：直接从语音输入到语音输出，跳过文字转换中间步骤
+# - 实时交互：支持实时语音交互和视频输入理解
+# 
+# 【API需求】
+# ✅ 必需API：阿里云百炼 DASHSCOPE_API_KEY
+#    - Qwen-Omni-Realtime API服务
+# 
+# 【硬件需求】
+# - 服务端算力：低（仅需Avatar渲染，约3GB显存）
+# - 推理端：云端API，无本地推理压力
+# 
+# 【适用场景】
+# ✅ 实时语音交互、多语言对话、语音助手、客服系统
+# ⚠️ 注意：Manual模式下ASR结果质量较差，需要本地SenseVoice补充
+#
+# ============================================================================
+
 default:
   logger:
-    log_level: "INFO"
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
   service:
-    host: "0.0.0.0"
-    port: 8282
-    cert_file: "ssl_certs/localhost.crt"
-    cert_key: "ssl_certs/localhost.key"
+    host: "0.0.0.0"    # 服务监听地址：0.0.0.0允许外网访问
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件（HTTPS必需）
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件（HTTPS必需）
+    
   chat_engine:
-    model_root: "models"
-    concurrent_limit: 1
+    model_root: "models"           # 模型文件根目录
+    concurrent_limit: 1            # 最大并发会话数（Qwen-Omni推荐单路）
     handler_search_path:
-      - "src/handlers"
+      - "src/handlers"             # Handler搜索路径
     handler_configs:
+    
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（LiteAvatar 2D数字人）
+      # ====================================================================
       RtcClient:
         module: client/rtc_client/client_handler_rtc
-        connection_ttl: 36000
-        # max time a session will last for
-        connection_ttl: 900
+        connection_ttl: 900          # 会话超时时间（秒）
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理，无需API）
+      # ====================================================================
       SileroVad:
         module: vad/silerovad/vad_handler_silero
-        speaking_threshold: 0.5
-        start_delay: 2048
-        end_delay: 5000
-        buffer_look_back: 5000
-        speech_padding: 512
+        speaking_threshold: 0.5      # 语音检测阈值（0-1，越低越敏感）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理，用于对话记录回显）  
+      # ====================================================================
       SenseVoice:
         enabled: True
         module: asr/sensevoice/asr_handler_sensevoice
-        model_name: "iic/SenseVoiceSmall"
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，补充Qwen-Omni的ASR不足
+        
+      # ====================================================================
+      # Qwen-Omni Handler - 端到端语音交互（需要百炼API）
+      # ====================================================================
       QwenOmni:
         enabled: true
         module: llm/qwen_omni/llm_handler_qwen_omni
-        model_name: "qwen-omni-turbo-realtime"
-        # api_key: "" # default=os.getenv("DASHSCOPE_API_KEY") api_key可以通过此处设置，或者通过环境变量，没设必挂
-        voice: "Serena" #"Chelsie", "Serena", "Ethan", "Cherry"
-        enable_video_input: true
-        video_frame_interval_ms: 1000 # 每1000ms发送一帧图片，防止拥塞，可按需调整，根据omni的文档，不要低于500ms
-        enable_text_output: true
-        input_audio_format: "PCM_16000HZ_MONO_16BIT"
-        output_audio_format: "PCM_24000HZ_MONO_16BIT"
-        enable_turn_detection: false # 目前暂未支持服务端vad模式，此处默认为false，不要修改
-        enable_input_transcription: false # 手动模式下，omni的输入的语音识别效果非常差，几乎不可用，默认关闭，直接使用正常asr的结果
-        transcription_model: "gummy-realtime-v1"
-      # Musetalk和LiteAvatar可以通过配置自由选，默认使用LiteAvatar了
+        model_name: "qwen-omni-turbo-realtime"    # Qwen-Omni实时模型
+        # api_key: ""  # API Key，留空从环境变量DASHSCOPE_API_KEY读取
+        
+        # 语音配置
+        voice: "Serena"              # 音色选择："Chelsie", "Serena", "Ethan", "Cherry"
+        input_audio_format: "PCM_16000HZ_MONO_16BIT"   # 输入音频格式
+        output_audio_format: "PCM_24000HZ_MONO_16BIT"  # 输出音频格式
+        
+        # 视频输入配置
+        enable_video_input: true                 # 启用视频输入理解
+        video_frame_interval_ms: 1000           # 视频帧发送间隔（毫秒，不低于500ms）
+        
+        # 交互模式配置
+        enable_text_output: true                # 启用文本输出显示
+        enable_turn_detection: false           # 服务端VAD模式（暂不支持，保持false）
+        enable_input_transcription: false      # Omni内置ASR（质量差，保持false）
+        transcription_model: "gummy-realtime-v1"  # 转录模型
+        
+      # ====================================================================
+      # Avatar Handler选择 - MuseTalk或LiteAvatar二选一
+      # ====================================================================
+      
+      # 选项一：MuseTalk（2D数字人，支持自定义形象）
       # AvatarMusetalk:
       #   module: avatar/musetalk/avatar_handler_musetalk
-      #   fps: 20  # Video frame rate
-      #   batch_size: 2  # Batch processing frame count, must be greater than 2
-      #   avatar_video_path: "src/handlers/avatar/musetalk/MuseTalk/data/video/yongen.mp4"  # Initialization video path
-      #   avatar_model_dir: "models/musetalk/avatar_model"  # Default avatar model directory
-      #   force_create_avatar: false  # Whether to force regenerate digital human data
-      #   debug: false  # Whether to enable debug mode
-      #   multi_thread_inference: true  # true: use 2 threads to inference (unet, vae), false: use single-thread to inference
+      #   fps: 20                              # 视频帧率
+      #   batch_size: 2                        # 批处理大小（必须>2）
+      #   avatar_video_path: "src/handlers/avatar/musetalk/MuseTalk/data/video/yongen.mp4"
+      #   avatar_model_dir: "models/musetalk/avatar_model"
+      #   force_create_avatar: false           # 是否强制重新生成数字人数据
+      #   debug: false                         # 调试模式
+      #   multi_thread_inference: true        # 多线程推理（unet, vae）
+      
+      # 选项二：LiteAvatar（2D数字人，官方形象库）
       LiteAvatar:
         module: avatar/liteavatar/avatar_handler_liteavatar
-        avatar_name: 20250408/sample_data
-        fps: 25
-        debug: false
-        enable_fast_mode: false
-        use_gpu: true
+        avatar_name: 20250408/sample_data    # 数字人形象名称
+        fps: 25                             # 渲染帧率
+        debug: false                        # 调试模式开关
+        enable_fast_mode: false             # 快速模式开关
+        use_gpu: true                       # 是否使用GPU渲染

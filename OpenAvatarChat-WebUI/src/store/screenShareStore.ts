@@ -1,0 +1,925 @@
+/**
+ * 屏幕共享状态管理 - 集成到OpenAvatarChat-WebUI
+ * 基于现有videoChatStore架构扩展
+ */
+
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import { message } from 'ant-design-vue';
+import { 
+  getOptimizedDisplayStream, 
+  ConnectionMonitor,
+  type ConnectionQuality,
+  checkScreenShareSupport,
+  type ScreenShareOptions 
+} from '@/utils/screenShareUtils';
+import { useVideoChatStore } from './index';
+
+interface ScreenShareState {
+  // 基础状态
+  isScreenSharing: boolean;
+  screenShareStream: MediaStream | null;
+  screenShareSupported: boolean;
+  currentVideoSource: 'camera' | 'screen';
+  
+  // 连接状态
+  connectionState: RTCIceConnectionState;
+  connectionQuality: ConnectionQuality;
+  
+  // 性能监控
+  connectionStats: {
+    bytesReceived: number;
+    bytesSent: number;
+    packetsLost: number;
+    roundTripTime: number;
+    bandwidth: number;
+  };
+  
+  // 用户选项
+  screenShareOptions: {
+    quality: 'ai-compatible' | 'mobile' | 'desktop' | 'high-bandwidth';
+    includeSystemAudio: boolean;
+    captureMode: 'desktop' | 'window' | 'tab';
+    autoQualityAdjust: boolean;
+  };
+  
+  // 错误状态
+  lastError: string | null;
+  
+  // UI状态
+  showSettingsPanel: boolean;
+  showStatsPanel: boolean;
+}
+
+export const useScreenShareStore = defineStore('screenShareStore', () => {
+  // 响应式状态
+  const state = ref<ScreenShareState>({
+    isScreenSharing: false,
+    screenShareStream: null,
+    screenShareSupported: false,
+    currentVideoSource: 'camera',
+    
+    connectionState: 'new',
+    connectionQuality: 'good',
+    
+    connectionStats: {
+      bytesReceived: 0,
+      bytesSent: 0,
+      packetsLost: 0,
+      roundTripTime: 0,
+      bandwidth: 0
+    },
+    
+    screenShareOptions: {
+      quality: 'ai-compatible',  // 🎯 默认使用AI兼容模式
+      includeSystemAudio: false,
+      captureMode: 'window',
+      autoQualityAdjust: true
+    },
+    
+    lastError: null,
+    showSettingsPanel: false,
+    showStatsPanel: false
+  });
+  
+  // 计算属性
+  const isConnected = computed(() => 
+    state.value.connectionState === 'connected'
+  );
+  
+  const canStartScreenShare = computed(() => 
+    state.value.screenShareSupported && 
+    !state.value.isScreenSharing &&
+    state.value.connectionState !== 'checking'
+  );
+  
+  const isMobile = computed(() => 
+    /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  );
+  
+  const qualityText = computed(() => {
+    switch (state.value.connectionQuality) {
+      case 'excellent': return '优秀';
+      case 'good': return '良好';
+      case 'fair': return '一般';
+      case 'poor': return '较差';
+      default: return '未知';
+    }
+  });
+  
+  const connectionStatusText = computed(() => {
+    switch (state.value.connectionState) {
+      case 'connected': return '已连接到TURN服务器';
+      case 'checking': return '正在连接TURN服务器...';
+      case 'disconnected': return 'TURN连接断开';
+      case 'failed': return 'TURN连接失败';
+      default: return '准备就绪';
+    }
+  });
+  
+  // WebRTC相关实例
+  let peerConnection: RTCPeerConnection | null = null;
+  let connectionMonitor: ConnectionMonitor | null = null;
+  
+  // 📷 摄像头状态记忆（用于屏幕共享时自动管理摄像头）
+  let cameraDisplayStateBeforeScreenShare: boolean = false;  // 记忆用户原本的显示状态
+  
+  /**
+   * 初始化屏幕共享功能
+   */
+  async function initializeScreenShare(): Promise<boolean> {
+    const supportCheck = checkScreenShareSupport();
+    state.value.screenShareSupported = supportCheck.supported;
+    
+    // 🐛 详细屏幕共享支持检测日志
+    console.log('🔍 屏幕共享支持检测:', {
+      浏览器: navigator.userAgent,
+      设备类型: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? '📱 移动设备' : '💻 桌面设备',
+      支持状态: supportCheck.supported,
+      不支持原因: supportCheck.reason || '无',
+      getDisplayMedia可用: !!navigator.mediaDevices?.getDisplayMedia,
+      navigator可用: !!navigator.mediaDevices,
+      HTTPS协议: location.protocol === 'https:',
+      本地环境: location.hostname === 'localhost'
+    });
+    
+    if (!supportCheck.supported) {
+      console.warn('⚠️ 屏幕共享不支持:', supportCheck.reason);
+      state.value.lastError = supportCheck.reason || '浏览器不支持屏幕共享';
+      return false;
+    }
+    
+    state.value.lastError = null;
+    console.log('✅ 屏幕共享功能初始化完成');
+    return true;
+  }
+  
+  /**
+   * 设置PeerConnection（从videoChatStore获取）
+   */
+  function setPeerConnection(pc: RTCPeerConnection) {
+    peerConnection = pc;
+    console.log('🔌 PeerConnection已设置到screenShareStore:', {
+      connectionState: pc.connectionState,
+      iceConnectionState: pc.iceConnectionState,
+      sendersCount: pc.getSenders().length,
+      senders: pc.getSenders().map(s => ({
+        kind: s.track?.kind,
+        label: s.track?.label,
+        enabled: s.track?.enabled,
+        readyState: s.track?.readyState
+      }))
+    });
+    
+    // 🎯 关键修复：立即验证video sender是否存在
+    const videoSender = pc.getSenders().find(s => s.track?.kind === 'video');
+    if (videoSender) {
+      console.log('✅ 发现video sender:', {
+        track: videoSender.track?.label,
+        enabled: videoSender.track?.enabled,
+        readyState: videoSender.track?.readyState
+      });
+    } else {
+      console.warn('⚠️ 未找到video sender！这可能导致屏幕共享无法工作');
+    }
+    
+    setupPeerConnectionEvents();
+  }
+  
+  /**
+   * 设置PeerConnection事件监听
+   */
+  function setupPeerConnectionEvents() {
+    if (!peerConnection) return;
+    
+    peerConnection.addEventListener('iceconnectionstatechange', () => {
+      state.value.connectionState = peerConnection!.iceConnectionState;
+      console.log('🔗 ICE连接状态:', state.value.connectionState);
+    });
+  }
+
+  /**
+   * 开始屏幕共享
+   */
+  async function startScreenShare(): Promise<void> {
+    if (!state.value.screenShareSupported) {
+      throw new Error('浏览器不支持屏幕共享');
+    }
+    
+    if (state.value.isScreenSharing) {
+      console.log('⚠️ 屏幕共享已经在进行中');
+      return;
+    }
+
+    try {
+      console.log('🚀 开始屏幕共享...');
+      state.value.lastError = null;
+      
+      // 📷 智能摄像头状态管理：记忆状态并确保轨道启用
+      const videoChatStore = useVideoChatStore();
+      
+      // 记忆用户原本的摄像头状态（true表示显示开启，false表示显示关闭）
+      cameraDisplayStateBeforeScreenShare = !videoChatStore.cameraOff;
+      
+      console.log('📷 屏幕共享开始前的摄像头状态:', {
+        cameraOff: videoChatStore.cameraOff,
+        用户原本显示状态: cameraDisplayStateBeforeScreenShare ? '开启显示' : '关闭显示',
+        localStream存在: !!videoChatStore.localStream,
+        视频轨道数量: videoChatStore.localStream?.getVideoTracks().length || 0
+      });
+      
+      // 🎯 关键修复：确保摄像头轨道启用以支持WebRTC轨道替换
+      if (videoChatStore.cameraOff) {
+        console.log('🔧 用户摄像头原本是关闭的，现在自动启用轨道以支持屏幕共享');
+        videoChatStore.handleCameraOff(); // 切换到开启状态（cameraOff = false，轨道启用）
+      }
+      
+      // 此时 cameraOff = false，轨道已启用，但为了避免用户看到自己，再次关闭显示
+      console.log('📷 隐藏摄像头显示（但保持轨道启用状态）');
+      videoChatStore.handleCameraOff(); // 切换到关闭状态（cameraOff = true，但之前的轨道替换会保持屏幕流）
+      
+      // 获取屏幕共享流
+      const displayStream = await getOptimizedDisplayStream({
+        video: true,
+        audio: state.value.screenShareOptions.includeSystemAudio,
+        quality: state.value.screenShareOptions.quality,
+        turnOptimized: true
+      });
+      
+      // 更新状态
+      state.value.screenShareStream = displayStream;
+      state.value.isScreenSharing = true;
+      state.value.currentVideoSource = 'screen';
+      
+      // 🔥🔥🔥 关键修复：将屏幕视频流替换到WebRTC连接中
+      // 这样AI就能看到屏幕内容而不是摄像头了！
+      console.log('🐛 准备替换视频轨道...', {
+        displayStreamTracks: displayStream.getTracks().length,
+        peerConnectionExists: !!peerConnection,
+        屏幕流详情: {
+          id: displayStream.id,
+          active: displayStream.active,
+          videoTracks: displayStream.getVideoTracks().map(track => ({
+            label: track.label,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            muted: track.muted,
+            settings: track.getSettings()
+          }))
+        }
+      });
+      
+      try {
+        // 🎯 新增：验证屏幕捕获内容
+        const videoTrack = displayStream.getVideoTracks()[0];
+        if (!videoTrack || videoTrack.readyState !== 'live') {
+          throw new Error(`屏幕视频轨道状态异常: ${videoTrack ? videoTrack.readyState : 'no track'}`);
+        }
+        
+        // 🎯 新增：等待轨道数据稳定
+        console.log('⏳ 等待屏幕捕获数据稳定...');
+        await new Promise(resolve => setTimeout(resolve, 500)); // 等待500ms让数据流稳定
+        
+        // 🎯 新增：测试屏幕捕获内容是否为空
+        const isContentValid = await testScreenShareContent(displayStream);
+        console.log('📊 屏幕内容验证结果:', isContentValid);
+        
+        if (!isContentValid.hasContent) {
+          console.warn('⚠️ 屏幕捕获可能为空或黑屏:', isContentValid.reason);
+          // 不抛出错误，但记录警告，因为有些情况下黑屏是正常的（比如显示黑色背景）
+        }
+        
+        await replaceVideoTrack(displayStream);
+        console.log('🎉 成功！屏幕内容现在传送给AI了，AI可以看到你的屏幕！');
+        
+        // 🎯 新增：验证替换后的轨道状态并通知AI
+        setTimeout(async () => {
+          const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+          if (sender && sender.track) {
+            console.log('🔍 替换后轨道验证:', {
+              label: sender.track.label,
+              enabled: sender.track.enabled,
+              readyState: sender.track.readyState,
+              muted: sender.track.muted,
+              settings: sender.track.getSettings(),
+              stats: sender.track.getSettings()
+            });
+            
+            // 🎯 发送屏幕共享上下文提示给AI
+            if (sender.track.label.includes('screen')) {
+              console.log('📢 向AI发送屏幕共享上下文提示');
+              await notifyAIAboutScreenShare(true);
+            }
+          }
+        }, 1000);
+        
+      } catch (error) {
+        console.error('❌ 轨道替换失败:', error);
+        throw error;
+      }
+      
+      // 监听流结束事件
+      displayStream.getVideoTracks()[0].addEventListener('ended', () => {
+        console.log('🛑 屏幕共享流结束');
+        stopScreenShare();
+      });
+      
+      // 启动连接质量监控
+      if (peerConnection) {
+        connectionMonitor = new ConnectionMonitor(
+          peerConnection,
+          (quality) => {
+            state.value.connectionQuality = quality;
+            
+            if (state.value.screenShareOptions.autoQualityAdjust && quality === 'poor') {
+              console.log('📉 连接质量差，自动降低质量');
+              adjustQualityForPoorConnection();
+            }
+          }
+        );
+      }
+      
+      message.success('屏幕共享启动成功');
+      console.log('✅ 屏幕共享启动成功');
+
+    } catch (error: any) {
+      console.error('❌ 屏幕共享启动失败:', error);
+      state.value.lastError = error.message || '屏幕共享启动失败';
+      
+      // 📷 屏幕共享启动失败时恢复摄像头状态
+      if (cameraDisplayStateBeforeScreenShare) {
+        const videoChatStore = useVideoChatStore();
+        if (videoChatStore.cameraOff) {
+          console.log('📷 屏幕共享失败，恢复摄像头显示状态');
+          videoChatStore.handleCameraOff(); // 恢复摄像头显示
+        }
+      }
+      
+      // 清理状态
+      state.value.isScreenSharing = false;
+      state.value.screenShareStream = null;
+      state.value.currentVideoSource = 'camera';
+      
+      message.error(`屏幕共享启动失败: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * 停止屏幕共享
+   */
+  async function stopScreenShare(): Promise<void> {
+    if (!state.value.isScreenSharing) {
+      console.log('⚠️ 屏幕共享未在进行中');
+      return;
+    }
+    
+    try {
+      console.log('🛑 停止屏幕共享...');
+      
+      // 停止流
+      if (state.value.screenShareStream) {
+        state.value.screenShareStream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      
+      // 停止连接监控
+      if (connectionMonitor) {
+        connectionMonitor.stopMonitoring();
+        connectionMonitor = null;
+      }
+      
+      // 🔥🔥🔥 关键修复：恢复摄像头轨道，让AI重新看到摄像头画面
+      const videoChatStore = useVideoChatStore();
+      if (videoChatStore.localStream) {
+        await replaceVideoTrack(videoChatStore.localStream);
+        console.log('🎉 已恢复摄像头轨道，AI现在重新看到摄像头画面！');
+        
+        // 🎯 通知AI屏幕共享已结束
+        setTimeout(async () => {
+          console.log('📢 向AI发送屏幕共享结束提示');
+          await notifyAIAboutScreenShare(false);
+        }, 500);
+        
+      } else {
+        console.warn('⚠️ 无法恢复摄像头轨道：localStream不存在');
+      }
+      
+      // 📷 智能恢复摄像头状态
+      console.log('📷 恢复摄像头到原始状态:', {
+        用户原本显示状态: cameraDisplayStateBeforeScreenShare ? '开启显示' : '关闭显示',
+        当前cameraOff: videoChatStore.cameraOff,
+        需要恢复: cameraDisplayStateBeforeScreenShare && videoChatStore.cameraOff
+      });
+      
+      if (cameraDisplayStateBeforeScreenShare && videoChatStore.cameraOff) {
+        console.log('📷 用户原本开启了摄像头显示，现在自动恢复');
+        videoChatStore.handleCameraOff(); // 恢复到显示开启状态
+      } else if (!cameraDisplayStateBeforeScreenShare && !videoChatStore.cameraOff) {
+        console.log('📷 用户原本关闭了摄像头显示，现在自动恢复到关闭状态');
+        videoChatStore.handleCameraOff(); // 恢复到显示关闭状态
+      }
+      
+      // 更新状态
+      state.value.screenShareStream = null;
+      state.value.isScreenSharing = false;
+      state.value.currentVideoSource = 'camera';
+      state.value.lastError = null;
+      
+      message.success('屏幕共享已停止');
+      console.log('✅ 屏幕共享已停止');
+
+    } catch (error: any) {
+      console.error('❌ 停止屏幕共享失败:', error);
+      state.value.lastError = error.message || '停止屏幕共享失败';
+      message.error(`停止屏幕共享失败: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * 切换屏幕共享状态
+   */
+  async function toggleScreenShare(): Promise<void> {
+    if (state.value.isScreenSharing) {
+      await stopScreenShare();
+    } else {
+      await startScreenShare();
+    }
+  }
+  
+  /**
+   * 连接质量差时自动调整
+   */
+  function adjustQualityForPoorConnection() {
+    const currentQuality = state.value.screenShareOptions.quality;
+    
+    if (currentQuality === 'high-bandwidth') {
+      updateScreenShareOptions({ quality: 'desktop' });
+    } else if (currentQuality === 'desktop') {
+      updateScreenShareOptions({ quality: 'ai-compatible' });
+    } else if (currentQuality === 'ai-compatible') {
+      updateScreenShareOptions({ quality: 'mobile' });
+    }
+    // mobile已经是最低质量，不再降低
+    
+    console.log(`📊 质量已调整为: ${state.value.screenShareOptions.quality}`);
+  }
+  
+  /**
+   * 更新屏幕共享选项
+   */
+  function updateScreenShareOptions(options: Partial<typeof state.value.screenShareOptions>) {
+    state.value.screenShareOptions = {
+      ...state.value.screenShareOptions,
+      ...options
+    };
+    
+    console.log('⚙️ 屏幕共享选项已更新:', state.value.screenShareOptions);
+  }
+  
+  /**
+   * 切换设置面板
+   */
+  function toggleSettingsPanel() {
+    state.value.showSettingsPanel = !state.value.showSettingsPanel;
+    if (state.value.showSettingsPanel) {
+      state.value.showStatsPanel = false;
+    }
+  }
+  
+  /**
+   * 切换统计面板
+   */
+  function toggleStatsPanel() {
+    state.value.showStatsPanel = !state.value.showStatsPanel;
+    if (state.value.showStatsPanel) {
+      state.value.showSettingsPanel = false;
+    }
+  }
+  
+  /**
+   * 清除错误状态
+   */
+  function clearError() {
+    state.value.lastError = null;
+  }
+  
+  /**
+   * 通知AI屏幕共享状态变化
+   */
+  async function notifyAIAboutScreenShare(isScreenSharing: boolean) {
+    try {
+      const videoChatStore = useVideoChatStore();
+      
+      if (!videoChatStore.chatDataChannel || videoChatStore.chatDataChannel.readyState !== 'open') {
+        console.log('📡 聊天数据通道未就绪，跳过AI通知');
+        return;
+      }
+      
+      const contextMessage = isScreenSharing 
+        ? "系统提示：用户现在开始了屏幕共享，你现在看到的是用户的屏幕内容，请根据屏幕内容进行分析和回应。"
+        : "系统提示：用户结束了屏幕共享，你现在看到的是用户的摄像头画面。";
+      
+      // 通过数据通道发送上下文消息
+      const message = {
+        type: 'context_update',
+        content: contextMessage,
+        timestamp: Date.now(),
+        source: 'screen_share_system'
+      };
+      
+      console.log('📤 发送AI上下文消息:', contextMessage);
+      videoChatStore.chatDataChannel.send(JSON.stringify(message));
+      
+    } catch (error) {
+      console.error('❌ 发送AI通知失败:', error);
+      // 不抛出错误，因为这不是关键功能
+    }
+  }
+
+  /**
+   * 测试屏幕共享内容是否有效（非空、非黑屏）
+   */
+  async function testScreenShareContent(stream: MediaStream): Promise<{hasContent: boolean, reason: string, details?: any}> {
+    try {
+      // 创建视频元素来播放流
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      video.width = 320;
+      video.height = 240;
+      
+      // 等待视频准备就绪
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = resolve;
+        video.onerror = reject;
+        video.play();
+      });
+      
+      // 等待一帧渲染
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // 创建canvas进行像素分析
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return { hasContent: false, reason: 'Canvas context不可用' };
+      }
+      
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      
+      // 绘制当前帧到canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // 获取像素数据
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+      
+      // 分析像素内容
+      let totalBrightness = 0;
+      let nonZeroPixels = 0;
+      const sampleRate = 10; // 每10个像素采样一个，提高性能
+      
+      for (let i = 0; i < pixels.length; i += 4 * sampleRate) {
+        const r = pixels[i];
+        const g = pixels[i + 1]; 
+        const b = pixels[i + 2];
+        const brightness = (r + g + b) / 3;
+        
+        totalBrightness += brightness;
+        if (brightness > 0) {
+          nonZeroPixels++;
+        }
+      }
+      
+      const avgBrightness = totalBrightness / (pixels.length / 4 / sampleRate);
+      const nonZeroRatio = nonZeroPixels / (pixels.length / 4 / sampleRate);
+      
+      const details = {
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        avgBrightness: avgBrightness.toFixed(2),
+        nonZeroRatio: nonZeroRatio.toFixed(3),
+        sampledPixels: pixels.length / 4 / sampleRate
+      };
+      
+      // 清理资源
+      video.srcObject = null;
+      
+      // 判断是否有内容
+      // 如果平均亮度太低且大部分像素为0，可能是黑屏
+      if (avgBrightness < 5 && nonZeroRatio < 0.1) {
+        return { hasContent: false, reason: '检测到黑屏或极暗内容', details };
+      }
+      
+      // 如果所有像素都是同一值，可能是纯色屏幕
+      if (nonZeroRatio === 0) {
+        return { hasContent: false, reason: '检测到全黑屏幕', details };
+      }
+      
+      return { hasContent: true, reason: '检测到有效屏幕内容', details };
+      
+    } catch (error) {
+      console.error('屏幕内容测试失败:', error);
+      return { 
+        hasContent: true, 
+        reason: '测试失败，假设内容有效', 
+        details: { 
+          error: error instanceof Error ? error.message : String(error)
+        } 
+      };
+    }
+  }
+
+  /**
+   * 替换视频轨道 - 基于WebRTC最佳实践的强制解决方案
+   */
+  async function replaceVideoTrack(newStream: MediaStream): Promise<void> {
+    if (!peerConnection) {
+      console.error('❌ 无法替换视频轨道：peerConnection不存在');
+      throw new Error('PeerConnection未设置');
+    }
+    
+    // 🎯 增强调试：详细检查所有senders
+    const allSenders = peerConnection.getSenders();
+    console.log('🔍 所有senders列表:', allSenders.map(s => ({
+      kind: s.track?.kind,
+      label: s.track?.label || 'no-label',
+      enabled: s.track?.enabled,
+      readyState: s.track?.readyState,
+      hasTrack: !!s.track
+    })));
+    
+    const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+    
+    if (!sender) {
+      console.error('❌ 致命错误：未找到video sender！');
+      console.log('🔍 可用的senders:', allSenders.length);
+      throw new Error('未找到video sender，无法进行轨道替换');
+    }
+    
+    if (newStream.getVideoTracks().length === 0) {
+      console.error('❌ 新流中没有视频轨道！');
+      throw new Error('新流中没有视频轨道');
+    }
+    
+    const videoSender = sender;
+    if (videoSender && newStream.getVideoTracks().length > 0) {
+      const newTrack = newStream.getVideoTracks()[0];
+      const oldTrack = sender.track;
+      
+      // 🐛 详细调试信息
+      console.log('🔍 轨道替换详情:', {
+        oldTrack: oldTrack?.label || 'none',
+        oldTrackEnabled: oldTrack?.enabled,
+        oldTrackReadyState: oldTrack?.readyState,
+        newTrack: newTrack.label,
+        newTrackEnabled: newTrack.enabled,
+        newTrackMuted: newTrack.muted,
+        newTrackReadyState: newTrack.readyState,
+        newTrackSettings: newTrack.getSettings(),
+        // 🎯 新增：检查流的活跃状态
+        streamActive: newStream.active,
+        streamId: newStream.id
+      });
+      
+      // 🎯 新增：替换前验证新轨道的健康状态
+      if (newTrack.readyState !== 'live') {
+        console.warn('⚠️ 新轨道状态不是live:', newTrack.readyState);
+      }
+      
+      if (newTrack.muted) {
+        console.warn('⚠️ 新轨道被静音');
+      }
+      
+      // 执行替换
+      console.log('🔄 正在执行轨道替换...');
+      
+      try {
+        // 🎯 WebRTC最佳实践1：确保新轨道完全就绪
+        if (newTrack.readyState !== 'live') {
+          console.warn('⚠️ 新轨道未就绪，等待轨道激活...');
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('轨道激活超时')), 5000);
+            const checkReady = () => {
+              if (newTrack.readyState === 'live') {
+                clearTimeout(timeout);
+                resolve(true);
+              } else {
+                setTimeout(checkReady, 100);
+              }
+            };
+            checkReady();
+          });
+        }
+        
+        console.log('✅ 新轨道就绪，开始专业轨道替换流程...');
+        
+        // 🎯 WebRTC最佳实践2：检查轨道参数差异
+        const oldSettings = oldTrack?.getSettings();
+        const newSettings = newTrack.getSettings();
+        const needsRenegotiation = 
+          !oldSettings || 
+          oldSettings.width !== newSettings.width ||
+          oldSettings.height !== newSettings.height ||
+          oldSettings.frameRate !== newSettings.frameRate;
+        
+        console.log('🔍 轨道参数分析:', {
+          old: oldSettings,
+          new: newSettings,
+          needsRenegotiation
+        });
+        
+        // 🎯 WebRTC最佳实践3：先停止旧轨道释放资源
+        if (oldTrack) {
+          oldTrack.stop();
+          console.log('🛑 已停止旧轨道');
+        }
+        
+        // 🎯 WebRTC最佳实践4：执行轨道替换
+        await videoSender.replaceTrack(newTrack);
+        console.log('✅ replaceTrack调用成功');
+        
+        // 🎯 WebRTC最佳实践5：根据参数差异决定是否重新协商
+        if (needsRenegotiation) {
+          console.log('🔄 检测到轨道参数变化，执行强制重新协商...');
+          
+          // 创建新的offer
+          const offer = await peerConnection.createOffer();
+          await peerConnection.setLocalDescription(offer);
+          
+          // 等待ICE收集完成
+          await new Promise((resolve) => {
+            if (peerConnection?.iceGatheringState === 'complete') {
+              resolve(true);
+            } else {
+              const handler = () => {
+                if (peerConnection?.iceGatheringState === 'complete') {
+                  peerConnection?.removeEventListener('icegatheringstatechange', handler);
+                  resolve(true);
+                }
+              };
+              peerConnection?.addEventListener('icegatheringstatechange', handler);
+            }
+          });
+          
+          console.log('✅ 重新协商完成，ICE收集状态:', peerConnection.iceGatheringState);
+        } else {
+          console.log('ℹ️ 轨道参数相似，无需重新协商');
+        }
+        
+        // 🎯 通知后端轨道更换
+        const videoChatStore = useVideoChatStore();
+        if (videoChatStore.chatDataChannel?.readyState === 'open') {
+          const notification = {
+            type: 'track_replaced',
+            trackInfo: {
+              label: newTrack.label,
+              kind: newTrack.kind,
+              settings: newSettings,
+              renegotiated: needsRenegotiation
+            },
+            timestamp: Date.now()
+          };
+          videoChatStore.chatDataChannel.send(JSON.stringify(notification));
+          console.log('📡 已通知后端轨道更换事件');
+        }
+        
+        // 🎯 最终验证替换成功
+        setTimeout(() => {
+          const currentTrack = videoSender.track;
+          const success = currentTrack?.label === newTrack.label && currentTrack?.readyState === 'live';
+          
+          if (success) {
+            console.log('🎉 轨道替换验证成功！', {
+              label: currentTrack.label,
+              readyState: currentTrack.readyState,
+              settings: currentTrack.getSettings()
+            });
+          } else {
+            console.error('❌ 轨道替换验证失败！', {
+              expected: newTrack.label,
+              actual: currentTrack?.label,
+              expectedState: 'live',
+              actualState: currentTrack?.readyState
+            });
+          }
+        }, 1000);
+        
+      } catch (replaceError) {
+        console.error('❌ 专业轨道替换失败:', replaceError);
+        
+        // 🚨 终极备用方案：完全重建连接（基于搜索到的最后手段）
+        console.log('🔄 尝试终极备用方案：完全重建WebRTC连接...');
+        try {
+          const videoChatStore = useVideoChatStore();
+          
+          // 保存原始状态
+          const wasConnected = peerConnection.connectionState === 'connected';
+          
+          if (wasConnected) {
+            // 强制关闭当前连接
+            peerConnection.close();
+            console.log('🔌 已关闭原连接');
+            
+            // 等待一下让资源释放
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // 触发重新连接（让videoChatStore重新建立连接）
+            console.log('🔄 请求重新建立WebRTC连接...');
+            
+            // 通知用户需要重新连接
+            const message = {
+              type: 'connection_restart_required',
+              reason: 'track_replacement_failed',
+              newTrackLabel: newTrack.label,
+              timestamp: Date.now()
+            };
+            
+            // 如果有数据通道就通知，否则抛出错误让用户手动重连
+            if (videoChatStore.chatDataChannel?.readyState === 'open') {
+              videoChatStore.chatDataChannel.send(JSON.stringify(message));
+              console.log('📡 已请求后端协助重建连接');
+            }
+          }
+          
+          throw new Error('轨道替换失败，已尝试重建连接。请刷新页面重新连接。');
+          
+        } catch (fallbackError) {
+          console.error('❌ 备用方案也失败了:', fallbackError);
+          throw new Error(`所有轨道替换方案都失败了: ${replaceError instanceof Error ? replaceError.message : String(replaceError)}`);
+        }
+      }
+      
+      // 🎯 增强的替换后验证
+      setTimeout(() => {
+        const currentTrack = sender.track;
+        const stats = {
+          currentTrack: currentTrack?.label || 'none',
+          enabled: currentTrack?.enabled,
+          readyState: currentTrack?.readyState,
+          muted: currentTrack?.muted,
+          settings: currentTrack?.getSettings(),
+          // 检查是否真的是我们想要的轨道
+          isExpectedTrack: currentTrack?.label === newTrack.label
+        };
+        
+        console.log('🔍 替换后验证:', stats);
+        
+        // 🎯 关键检查：确保替换确实生效
+        if (!stats.isExpectedTrack) {
+          console.error('❌ 轨道替换可能失败：当前轨道与期望轨道不符');
+        }
+        
+        if (!stats.enabled) {
+          console.warn('⚠️ 替换后轨道未启用');
+        }
+        
+        if (stats.readyState !== 'live') {
+          console.warn('⚠️ 替换后轨道状态异常:', stats.readyState);
+        }
+      }, 500);
+      
+    } else {
+      console.error('❌ 无法替换视频轨道:', {
+        senderExists: !!sender,
+        senderTrack: sender?.track?.label || 'none',
+        videoTracksCount: newStream.getVideoTracks().length,
+        allTracks: newStream.getTracks().map(t => ({ 
+          kind: t.kind, 
+          label: t.label, 
+          enabled: t.enabled,
+          readyState: t.readyState 
+        }))
+      });
+      throw new Error('无法找到视频发送器或新流中没有视频轨道');
+    }
+  }
+  
+  return {
+    // 状态
+    state,
+    
+    // 计算属性
+    isConnected,
+    canStartScreenShare,
+    isMobile,
+    qualityText,
+    connectionStatusText,
+    
+    // 方法
+    initializeScreenShare,
+    setPeerConnection,
+    startScreenShare,
+    stopScreenShare,
+    toggleScreenShare,
+    updateScreenShareOptions,
+    toggleSettingsPanel,
+    toggleStatsPanel,
+    clearError,
+    replaceVideoTrack
+  };
+});

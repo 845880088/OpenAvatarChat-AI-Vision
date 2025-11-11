@@ -1,58 +1,121 @@
+# ============================================================================
+# OpenAvatarChat 配置文件 - MuseTalk自定义数字人配置
+# ============================================================================
+# 
+# 【配置说明】
+# - MuseTalk 2D数字人：支持自定义底版视频，实现个性化数字人形象
+# - 云端API：LLM和TTS都使用云端API，降低本地算力需求
+# - 自定义形象：可以使用任意人物视频作为数字人形象底板
+# 
+# 【API需求】
+# ✅ 必需API：阿里云百炼 DASHSCOPE_API_KEY
+#    - LLM：Qwen-Plus模型
+#    - TTS：百炼CosyVoice
+# 
+# 【硬件需求】
+# - 服务端算力：中等（i7+ CPU + 12GB内存 + 8GB+显存）
+# - MuseTalk渲染：约4GB显存/路（仅支持GPU推理）
+# - 首次加载：需要生成avatar数据，耗时较长
+# 
+# 【适用场景】
+# ✅ 需要自定义数字人形象、品牌代言人、个性化应用
+# ⚠️ 注意：仅支持GPU推理，首次加载需要较长时间生成数据
+#
+# ============================================================================
+
 default:
   logger:
-    log_level: "INFO"
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
   service:
-    host: "0.0.0.0"
-    port: 8282
-    cert_file: "ssl_certs/localhost.crt"
-    cert_key: "ssl_certs/localhost.key"
+    host: "0.0.0.0"    # 服务监听地址：0.0.0.0允许外网访问
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件（HTTPS必需）
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件（HTTPS必需）
+    
   chat_engine:
-    model_root: "models"
-    concurrent_limit: 1
+    model_root: "models"           # 模型文件根目录
+    concurrent_limit: 1            # 最大并发会话数（MuseTalk推荐1-2路）
     handler_search_path:
-      - "src/handlers"
+      - "src/handlers"             # Handler搜索路径
     handler_configs:
+    
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（MuseTalk 2D数字人）
+      # ====================================================================
       RtcClient:
         module: client/rtc_client/client_handler_rtc
-        # max time a session will last for
-        connection_ttl: 900
+        connection_ttl: 900          # 会话超时时间（秒）
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理，无需API）
+      # ====================================================================
       SileroVad:
         module: vad/silerovad/vad_handler_silero
-        speaking_threshold: 0.5
-        start_delay: 2048
-        end_delay: 5000
-        buffer_look_back: 5000
-        speech_padding: 512
+        speaking_threshold: 0.5      # 语音检测阈值（0-1，越低越敏感）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理，无需API）  
+      # ====================================================================
       SenseVoice:
         enabled: True
         module: asr/sensevoice/asr_handler_sensevoice
-        model_name: "iic/SenseVoiceSmall"
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，支持中英文
+        
+      # ====================================================================
+      # TTS Handler - 语音合成（需要百炼API）
+      # ====================================================================  
       CosyVoice:
         enabled: True
         module: tts/bailian_tts/tts_handler_cosyvoice_bailian
-        voice: "longxiaochun"
-        model_name: "cosyvoice-v1"
-        # api_key: "" # default=os.getenv("DASHSCOPE_API_KEY")
+        voice: "longxiaochun"        # 音色选择：longxiaocheng, longxiaochun等
+        model_name: "cosyvoice-v1"   # 百炼CosyVoice模型版本
+        # api_key: ""                # API Key，留空从环境变量DASHSCOPE_API_KEY读取
+        
+      # ====================================================================
+      # LLM Handler - 大语言模型（需要API）
+      # ====================================================================
       LLMOpenAICompatible:
         enabled: True
         module: llm/openai_compatible/llm_handler_openai_compatible
-        model_name: "qwen-plus"
-        enable_video_input: False # ensure your llm support video input
-        history_length: 20
-        # model_name: "gemini-2.0-flash"
+        model_name: "qwen-plus"              # 推荐模型：qwen-plus, qwen-max
+        enable_video_input: False            # 是否启用视频输入（需模型支持）
+        history_length: 20                   # 对话历史保留条数
         system_prompt: "请你扮演一个 AI 助手，用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要讨论标点符号相关的内容"
-        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        # api_url: 'http://127.0.0.1:11434/v1' # ollama
-        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/'
-        # api_key: "" # default=os.getenv("DASHSCOPE_API_KEY")
+        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 百炼API地址
+        
+        # 其他可选API：
+        # api_url: 'http://127.0.0.1:11434/v1'                      # Ollama本地API
+        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/' # Google Gemini
+        # api_key: ""  # API Key，留空从对应环境变量读取
+        
+      # ====================================================================
+      # Avatar Handler - MuseTalk数字人（支持自定义形象）
+      # ====================================================================
       AvatarMusetalk:
         module: avatar/musetalk/avatar_handler_musetalk
-        fps: 20  # Video frame rate
-        batch_size: 2  # Batch processing frame count, must be greater than 2
-        avatar_video_path: "src/handlers/avatar/musetalk/MuseTalk/data/video/yongen.mp4"  # Initialization video path
-        avatar_model_dir: "models/musetalk/avatar_model"  # Default avatar model directory
-        force_create_avatar: false  # Whether to force regenerate digital human data
-        debug: false  # Whether to enable debug mode
-        multi_thread_inference: true  # true: use 2 threads to inference (unet, vae), false: use single-thread to inference
-        # debug_save_handler_audio: true  # Whether to save audio frames
-        # debug_replay_speech_id: "speech-d9o18xrugl6-1"  # Speech ID for replay
+        
+        # 性能配置
+        fps: 20                      # 视频帧率（推荐15-25，根据GPU性能调整）
+        batch_size: 2                # 批处理大小（必须>=2，影响推理效率）
+        
+        # 形象配置
+        avatar_video_path: "src/handlers/avatar/musetalk/MuseTalk/data/video/yongen.mp4"
+        # 自定义视频路径，支持替换为自己的数字人视频
+        # 可用工具下载LiteAvatar形象：python scripts/download_avatar_model.py
+        
+        # 数据管理
+        avatar_model_dir: "models/musetalk/avatar_model"  # avatar数据保存目录
+        force_create_avatar: false   # 强制重新生成数字人数据（首次为true）
+        
+        # 推理配置  
+        multi_thread_inference: true # 多线程推理（unet, vae），提升性能
+        debug: false                 # 调试模式开关
+        
+        # 调试选项（可选）
+        # debug_save_handler_audio: true                    # 保存音频帧用于调试
+        # debug_replay_speech_id: "speech-d9o18xrugl6-1"   # 重播指定语音ID

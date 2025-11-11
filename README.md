@@ -18,12 +18,35 @@
 ## 🔥核心亮点
 - **多模态语言模型：支持多模态语言模型，包括文本、音频、视频等。**
 - **模块化设计：使用模块化的设计，可以灵活地替换组件，实现不同功能组合。**
+- **🆕 AI自动化助手：通过自然语言控制计算机，AI可"看到"屏幕内容并智能执行操作。**
+- **🆕 屏幕共享功能：支持实时屏幕共享和AI分析，可理解屏幕内容并进行智能交互。**
+- **🆕 TURN服务器集成：完善的NAT穿透支持，确保跨网络环境稳定连接。**
+- **🆕 现代化前端：Vue3+TypeScript构建的响应式界面，支持多设备访问。**
 
 
 ## 📢 最新动态
 
 ### 更新日志
 
+- [2025.11.10] 🔥🔥🔥 AI自动化助手集成:
+  - **AI自动化助手**: 全新集成基于Qwen-VL的计算机控制功能
+    - ✅ **自然语言控制**: 通过简单的自然语言指令控制计算机
+    - ✅ **视觉理解**: AI可"看到"屏幕内容并智能决策下一步操作
+    - ✅ **实时反馈**: WebSocket实时推送执行进度和AI分析
+    - ✅ **美观界面**: 基于Ant Design Vue的现代化控制面板
+    - ✅ **安全可控**: 支持随时停止执行，防止误操作
+  - **使用场景**: 打开应用、浏览器操作、文本编辑、系统操作等
+- [2025.11.06] 🔥🔥🔥 版本 0.6.0发布:
+  - **屏幕共享功能**: 全新集成WebRTC屏幕共享，支持实时屏幕内容分析和AI理解
+    - ✅ **修复**: WebRTC轨道替换逻辑，解决AI接收"纯黑图像"问题
+    - ✅ **优化**: 添加详细调试日志，便于问题排查
+    - ✅ **完善**: 摄像头↔屏幕无缝切换功能
+  - **TURN服务器优化**: 完善TURN服务器配置，支持跨网络环境的稳定连接
+  - **前端架构升级**: 重构WebUI界面，支持现代化Vue3+TypeScript开发
+  - **双前端支持**: 同时支持内网(/webui/)和外网(/ui/)访问，灵活部署
+  - **智能质量调整**: 根据网络环境自动调整屏幕共享质量(移动/桌面/高质量)
+  - **生产部署优化**: 完善构建脚本和部署流程，支持一键部署到生产环境
+  - **🆕 文档完善**: 新增《屏幕共享使用指南.md》和《项目技术架构.md》
 - [2025.08.19] ⭐️⭐️⭐️ 版本 0.5.1发布:
   - LiteAvatar支持单机多session，详见下文LiteAvatar配置部分
   - 增加对 Qwen-Omni多模态模型的支持，使用百炼的Qwen-Omni-Realtime API服务，配置文件参考[配置](#chat_with_qwen_omniyaml)
@@ -54,9 +77,200 @@
 
 ### 待办清单
 
+- [x] **屏幕共享功能** - 已完成WebRTC屏幕共享集成
+- [x] **TURN服务器支持** - 已完成跨网络连接优化
+- [x] **前端现代化改造** - 已完成Vue3+TypeScript重构
 - [ ] 完善文档以及视频教程
 - [ ] 接入Live2D数字人
 - [ ] 接入3D数字人
+- [ ] 屏幕内容AI分析增强
+- [ ] 多屏幕共享支持
+- [ ] 移动端屏幕共享优化
+
+## 🖥️ 屏幕共享功能
+
+### 功能特性
+OpenAvatarChat v0.6.0 新增了强大的屏幕共享功能，结合AI分析能力：
+
+- **🎯 实时屏幕共享**: 基于WebRTC的高质量屏幕共享
+- **🧠 AI内容分析**: 集成Qwen3-VL-Plus模型，可理解屏幕内容并进行智能对话
+- **🌐 TURN服务器**: 支持跨网络环境稳定连接
+- **📱 智能质量调整**: 根据设备和网络自动优化(移动/桌面/高质量)
+- **📊 实时监控**: 带宽、延迟、连接质量实时显示
+
+### 快速体验
+```bash
+# 1. 启动后端 (选择视觉理解版本)
+04运行程序-lam-VL.bat
+
+# 2. 访问前端界面
+内网访问: https://127.0.0.1:8282/
+外网访问: https://liao.uunat.com:8282/ui/
+
+# 3. 点击屏幕共享按钮开始使用
+```
+
+### 部署架构
+```
+TURN服务器: 8.138.87.249:3478
+├── 配置: 2vCPU / 4GiB 云服务器
+├── 内网穿透: liao.uunat.com:8282
+└── 支持场景: 跨网络NAT穿透
+```
+
+### 🔧 功能修复与维护
+
+#### 最新修复 (2024-11-07)
+- **✅ 修复**: AI无法识别屏幕共享内容的问题
+- **✅ 新增**: AI兼容屏幕共享模式 (500x500分辨率)
+- **✅ 优化**: 后端智能图像处理，自动检测屏幕内容
+- **✅ 完善**: 详细调试日志和问题诊断
+
+#### 故障排除
+如果遇到屏幕共享相关问题：
+
+1. **AI看不到屏幕内容**
+   - 确认已启用"AI兼容"模式 (质量设置中选择🤖)
+   - 检查后端日志是否显示`🖼️ AI图像优化`信息
+   - 尝试切换摄像头后再启动屏幕共享
+
+2. **WebRTC连接失败**
+   - 检查浏览器是否支持`getDisplayMedia` API
+   - 确认TURN服务器连接状态
+   - 查看浏览器控制台是否有权限错误
+
+3. **性能问题**
+   - 调整屏幕共享质量 (移动/桌面/高质量)
+   - 检查网络带宽和延迟
+   - 考虑使用"AI兼容"模式减少处理负担
+
+#### 🛡️ 备份与恢复
+为保护代码安全，在修改屏幕共享相关功能前，系统会自动创建备份：
+
+**备份位置**: `backup/screenshare-fix-YYYYMMDD/`
+
+**恢复命令**:
+```bash
+# 恢复后端文件 
+copy "backup\screenshare-fix-20241107\media_utils.py.backup" "src\engine_utils\media_utils.py"
+
+# 恢复前端文件
+copy "backup\screenshare-fix-20241107\screenShareStore.ts.backup" "OpenAvatarChat-WebUI\src\store\screenShareStore.ts"
+copy "backup\screenshare-fix-20241107\screenShareUtils.ts.backup" "OpenAvatarChat-WebUI\src\utils\screenShareUtils.ts"
+copy "backup\screenshare-fix-20241107\ScreenShareInfoPanel.vue.backup" "OpenAvatarChat-WebUI\src\components\ScreenShareInfoPanel.vue"
+
+# 重新构建前端
+cd OpenAvatarChat-WebUI && .\build-and-deploy.bat
+```
+
+#### 🔍 开发日志
+屏幕共享功能的详细技术实现和修复记录，请参考：
+- 📋 [屏幕共享功能技术方案.md](./屏幕共享功能技术方案.md)
+- 📖 [屏幕共享使用指南.md](./屏幕共享使用指南.md)
+
+## 🤖 AI自动化助手
+
+### 功能介绍
+OpenAvatarChat v0.6+ 集成了强大的AI自动化助手功能，让你可以用自然语言控制计算机：
+
+- **🎯 自然语言控制**: 用简单的自然语言指令控制计算机操作
+- **🧠 视觉理解能力**: 集成Qwen-VL-Max模型，AI可"看到"并理解屏幕内容
+- **🔄 实时反馈**: WebSocket实时推送执行进度、AI分析和操作历史
+- **🎨 美观界面**: 基于Ant Design Vue的现代化控制面板
+- **🔒 安全可控**: 支持随时停止执行，设置最大步数限制
+
+### 快速开始
+
+#### 1. 配置API Key
+编辑 `agent_function_call/config.py`：
+```python
+DASHSCOPE_API_KEY = "sk-your-api-key-here"  # 填入你的阿里云灵积API Key
+```
+
+获取API Key：访问 [阿里云灵积平台](https://dashscope.aliyun.com/)
+
+#### 2. 启动服务
+使用任一启动器（推荐使用包含视觉功能的版本）：
+```bash
+04运行程序-lam-VL.bat
+```
+
+#### 3. 开始使用
+- 访问：`https://127.0.0.1:8282`
+- 点击右下角 **"🤖 AI自动化助手"** 按钮
+- 输入任务指令，开始执行！
+
+### 使用示例
+
+#### 打开应用
+```
+打开记事本
+```
+
+#### 浏览器操作
+```
+打开浏览器并搜索 OpenAI
+```
+
+#### 文本编辑
+```
+打开记事本，输入 "Hello World"，然后保存到桌面
+```
+
+#### 系统操作
+```
+打开微信
+```
+
+### 界面说明
+
+控制面板包含：
+1. **任务输入区** - 输入自然语言指令
+2. **控制按钮** - 开始执行 / 停止执行
+3. **状态显示** - 执行进度条、当前步骤、执行历史
+4. **AI分析** - 显示AI对屏幕的理解
+
+### 安全提示
+
+⚠️ **重要警告**：
+1. AI会真实控制你的计算机
+2. 执行前请确保理解任务内容
+3. 不建议执行未经验证的复杂任务
+4. 可随时点击"停止执行"中断任务
+5. 建议先在测试环境试用
+
+### 技术架构
+
+```
+前端 (Vue 3 + Ant Design Vue)
+     ↓ HTTP API
+后端 (FastAPI)
+     ↓
+AI代理服务 (agent_automation_service.py)
+     ↓
+计算机控制 (agent_function_call.py)
+     ↓
+Qwen-VL-Max + pynput (AI分析 + 操作执行)
+```
+
+### 故障排查
+
+**问题1：无法启动任务**
+- 检查API Key是否正确配置
+- 确认后端服务已启动
+- 查看浏览器控制台错误信息
+
+**问题2：点击位置不准确**
+- 检查 `config.py` 中的屏幕分辨率设置
+- 确保设置值与实际屏幕分辨率一致
+
+**问题3：WebSocket连接失败**
+- 确认后端服务正常运行
+- 检查防火墙设置
+
+### 详细文档
+- 📖 [AI自动化助手使用指南](agent_function_call/AI自动化助手使用指南.md)
+- 🔧 [集成技术文档](OpenAvatarChat-WebUI/AI自动化助手集成说明.md)
 
 ## Demo
 
@@ -107,6 +321,8 @@ HuggingFace
 - [📢 最新动态](#-最新动态)
   - [更新日志](#更新日志)
   - [待办清单](#待办清单)
+- [🖥️ 屏幕共享功能](#️-屏幕共享功能)
+- [🤖 AI自动化助手](#-ai自动化助手)
 - [Demo](#demo)
   - [在线体验](#在线体验)
   - [视频](#视频)
@@ -838,10 +1054,35 @@ uv run src/demo.py --config <配置文件的绝对路径>.yaml
 ## Star历史
 ![](https://api.star-history.com/svg?repos=HumanAIGC-Engineering/OpenAvatarChat&type=Date)
 
+## 致谢与声明
+
+### 基于 OpenAvatarChat 项目
+
+本项目基于 [OpenAvatarChat](https://github.com/HumanAIGC-Engineering/OpenAvatarChat) 进行修改和扩展开发。
+
+**原项目信息：**
+- **原项目名称**: OpenAvatarChat
+- **原项目地址**: https://github.com/HumanAIGC-Engineering/OpenAvatarChat
+- **原项目作者**: Gang Cheng, Tao Chen, Feng Wang, Binchao Huang, Hui Xu, Guanqiao He, Yi Lu, Shengyin Tan
+- **开源协议**: Apache License 2.0
+
+**本项目的主要修改和扩展：**
+- 集成了基于 Qwen-VL 的 AI 自动化助手功能
+- 增强了屏幕共享和 AI 分析能力
+- 优化了前端界面和用户体验
+- 添加了更多使用场景和示例
+
+感谢 OpenAvatarChat 团队提供的优秀开源项目！
+
+### 开源协议
+
+本项目遵循 Apache License 2.0 开源协议。
+
 ## 引用
 
-如果您在您的研究/项目中感到 OpenAvatarChat 为您提供了帮助，期待您能给一个 Star⭐和引用✏️
+如果您在您的研究/项目中感到本项目为您提供了帮助，期待您能给一个 Star⭐
 
+**引用原项目：**
 ```
 @software{avatarchat2025,
   author = {Gang Cheng, Tao Chen, Feng Wang, Binchao Huang, Hui Xu, Guanqiao He, Yi Lu, Shengyin Tan},

@@ -129,6 +129,8 @@ class HandlerLLM(HandlerBase, ABC):
         if len(chat_text) < 1:
             return
         logger.info(f'llm input {context.model_name} {chat_text} ')
+        
+        
         current_content = context.history.generate_next_messages(chat_text, 
                                                                  [context.current_image] if context.current_image is not None else [])
         logger.debug(f'llm input {context.model_name} {current_content} ')

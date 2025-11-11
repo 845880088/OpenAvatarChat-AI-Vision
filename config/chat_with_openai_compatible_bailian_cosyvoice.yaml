@@ -1,54 +1,104 @@
+# ============================================================================
+# OpenAvatarChat 配置文件 - 生产环境推荐配置
+# ============================================================================
+# 
+# 【配置说明】
+# - LiteAvatar 2D数字人：高质量2D数字人，稳定可靠
+# - 云端API：LLM和TTS都使用云端API，降低本地算力需求
+# - 生产推荐：适合中小规模部署，技术门槛低，开箱即用
+# 
+# 【API需求】
+# ✅ 必需API：阿里云百炼 DASHSCOPE_API_KEY
+#    - LLM：Qwen-Plus模型
+#    - TTS：百炼CosyVoice
+# 
+# 【硬件需求】
+# - 服务端算力：中等（i7+ CPU + 8GB内存 + 6-12GB显存）
+# - 并发限制：每路约3GB显存，12GB显卡最多4路
+# 
+# 【适用场景】
+# ✅ 客服系统、教育应用、中小规模部署、快速上线
+# ⚠️ 注意：依赖云端服务稳定性，需要良好网络环境
+#
+# ============================================================================
+
 default:
   logger:
-    log_level: "INFO"
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
   service:
-    host: "0.0.0.0"
-    port: 8282
-    cert_file: "ssl_certs/localhost.crt"
-    cert_key: "ssl_certs/localhost.key"
+    host: "0.0.0.0"    # 服务监听地址：0.0.0.0允许外网访问
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件（HTTPS必需）
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件（HTTPS必需）
+    
   chat_engine:
-    model_root: "models"
-    concurrent_limit: 2
+    model_root: "models"           # 模型文件根目录
+    concurrent_limit: 2            # 最大并发会话数（LiteAvatar推荐1-3路）
     handler_search_path:
-      - "src/handlers"
+      - "src/handlers"             # Handler搜索路径
     handler_configs:
+      
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（LiteAvatar 2D数字人）
+      # ====================================================================
       RtcClient:
         module: client/rtc_client/client_handler_rtc
-        # max time a session will last for
-        connection_ttl: 900
+        connection_ttl: 900          # 会话超时时间（秒）
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理，无需API）
+      # ====================================================================
       SileroVad:
         module: vad/silerovad/vad_handler_silero
-        speaking_threshold: 0.5
-        start_delay: 2048
-        end_delay: 5000
-        buffer_look_back: 5000
-        speech_padding: 512
+        speaking_threshold: 0.5      # 语音检测阈值（0-1，越低越敏感）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理，无需API）  
+      # ====================================================================
       SenseVoice:
         enabled: True
         module: asr/sensevoice/asr_handler_sensevoice
-        model_name: "iic/SenseVoiceSmall"
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，支持中英文
+        
+      # ====================================================================
+      # TTS Handler - 语音合成（需要百炼API）
+      # ====================================================================  
       CosyVoice:
         enabled: True
         module: tts/bailian_tts/tts_handler_cosyvoice_bailian
-        voice: "longxiaochun"
-        model_name: "cosyvoice-v1"
-        # api_key: "" # default=os.getenv("DASHSCOPE_API_KEY")
+        voice: "longxiaochun"        # 音色选择：longxiaocheng, longxiaochun等
+        model_name: "cosyvoice-v1"   # 百炼CosyVoice模型版本
+        # api_key: ""                # API Key，留空从环境变量DASHSCOPE_API_KEY读取
+        
+      # ====================================================================
+      # LLM Handler - 大语言模型（需要API）
+      # ====================================================================
       LLMOpenAICompatible:
         enabled: True
         module: llm/openai_compatible/llm_handler_openai_compatible
-        model_name: "qwen-plus"
-        enable_video_input: False # ensure your llm support video input
-        history_length: 20
-        # model_name: "gemini-2.0-flash"
+        model_name: "qwen-plus"              # 推荐模型：qwen-plus, qwen-max
+        enable_video_input: False            # 是否启用视频输入（需模型支持）
+        history_length: 20                   # 对话历史保留条数
         system_prompt: "请你扮演一个 AI 助手，用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要讨论标点符号相关的内容"
-        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        # api_url: 'http://127.0.0.1:11434/v1' # ollama
-        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/'
-        # api_key: "" # default=os.getenv("DASHSCOPE_API_KEY")
+        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 百炼API地址
+        
+        # 其他可选API：
+        # api_url: 'http://127.0.0.1:11434/v1'                      # Ollama本地API
+        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/' # Google Gemini
+        # api_key: ""  # API Key，留空从对应环境变量读取
+        
+      # ====================================================================
+      # Avatar Handler - 2D数字人渲染（服务端GPU渲染）
+      # ====================================================================
       LiteAvatar:
         module: avatar/liteavatar/avatar_handler_liteavatar
-        avatar_name: 20250408/sample_data
-        fps: 25
-        debug: false
-        enable_fast_mode: false
-        use_gpu: true
+        avatar_name: 20250408/sample_data    # 数字人形象名称，可从LiteAvatarGallery选择
+        fps: 25                             # 渲染帧率（15-30，根据GPU性能调整）
+        debug: false                        # 调试模式开关
+        enable_fast_mode: false             # 快速模式（可能影响质量）
+        use_gpu: true                       # 是否使用GPU渲染（推荐开启）

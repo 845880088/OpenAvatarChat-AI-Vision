@@ -18,6 +18,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.glut/
+.conda/
 ssl_certs/localhost.crt
 ssl_certs/localhost.key
 
@@ -38,3 +40,7 @@ exp/
 uv.lock
 logs/
 .lock
+
+# 开源前检查文件（不需要提交）
+开源前检查清单.md
+环境变量配置指南.md

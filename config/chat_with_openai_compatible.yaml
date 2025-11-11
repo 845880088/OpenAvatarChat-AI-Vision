@@ -1,57 +1,117 @@
+# ============================================================================
+# OpenAvatarChat 配置文件 - OpenAI兼容API + 本地CosyVoice配置
+# ============================================================================
+# 
+# 【配置说明】
+# - 混合部署：LLM使用云端API，TTS使用本地CosyVoice推理
+# - 平衡方案：在成本和性能之间取得平衡
+# - 高质量TTS：本地CosyVoice提供更好的语音合成质量
+# 
+# 【API需求】
+# ✅ 必需API：任意OpenAI兼容LLM API
+#    - 默认：阿里云百炼 DASHSCOPE_API_KEY
+#    - 可选：Ollama, Gemini, DeepSeek等
+# ❌ TTS无需API：本地CosyVoice推理
+# 
+# 【硬件需求】
+# - 服务端算力：中等（i7+ CPU + 12GB+ 内存 + 8-12GB显存）
+# - TTS推理：约2GB显存（CosyVoice）
+# - Avatar渲染：约3GB显存/路（LiteAvatar）
+# 
+# 【适用场景】
+# ✅ 对TTS质量要求高、希望降低API调用成本、平衡部署
+# ⚠️ 注意：Windows需要特殊处理pynini依赖（见README）
+#
+# ============================================================================
+
 default:
   logger:
-    log_level: "INFO"
+    log_level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    
   service:
-    host: "0.0.0.0"
-    port: 8282
-    cert_file: "ssl_certs/localhost.crt"
-    cert_key: "ssl_certs/localhost.key"
+    host: "0.0.0.0"    # 服务监听地址：0.0.0.0允许外网访问
+    port: 8282         # 服务端口：可根据需要修改
+    cert_file: "ssl_certs/localhost.crt"  # SSL证书文件（HTTPS必需）
+    cert_key: "ssl_certs/localhost.key"   # SSL私钥文件（HTTPS必需）
+    
   chat_engine:
-    model_root: "models"
+    model_root: "models"           # 模型文件根目录
+    # concurrent_limit: 1          # 最大并发数（可根据显存调整）
     handler_search_path:
-      - "src/handlers"
+      - "src/handlers"             # Handler搜索路径
     handler_configs:
+    
+      # ====================================================================
+      # 客户端Handler - WebRTC视频流传输（LiteAvatar 2D数字人）
+      # ====================================================================
       RtcClient:
         module: client/rtc_client/client_handler_rtc
-        # max time a session will last for
-        connection_ttl: 900
+        connection_ttl: 900          # 会话超时时间（秒）
+        
+      # ====================================================================  
+      # VAD Handler - 语音活动检测（本地推理，无需API）
+      # ====================================================================
       SileroVad:
         module: vad/silerovad/vad_handler_silero
-        speaking_threshold: 0.5
-        start_delay: 2048
-        end_delay: 5000
-        buffer_look_back: 5000
-        speech_padding: 512
+        speaking_threshold: 0.5      # 语音检测阈值（0-1，越低越敏感）
+        start_delay: 2048           # 语音起始延迟（音频采样数）
+        end_delay: 5000             # 语音结束延迟（音频采样数）
+        buffer_look_back: 5000      # 回溯缓冲区大小（音频采样数）
+        speech_padding: 512         # 语音前后填充静音（音频采样数）
+        
+      # ====================================================================
+      # ASR Handler - 语音识别（本地推理，无需API）  
+      # ====================================================================
       SenseVoice:
         enabled: True
         module: asr/sensevoice/asr_handler_sensevoice
-        model_name: "iic/SenseVoiceSmall"
+        model_name: "iic/SenseVoiceSmall"  # 阿里SenseVoice模型，支持中英文
+        
+      # ====================================================================
+      # TTS Handler - 本地CosyVoice推理（无需API，高质量语音合成）
+      # ====================================================================  
       CosyVoice:
         enabled: True
         module: tts/cosyvoice/tts_handler_cosyvoice
-        # api_url: 'http://127.0.0.1:50000/inference_sft' #run CosyVoice/runtime/python/fastapi/server.py
-        model_name: "iic/CosyVoice-300M-SFT" # run cosyvoice in code
-        spk_id: "中文女" # use sft model
-        # ref_audio_path: "open-video-chat/src/third_party/CosyVoice/asset/zero_shot_prompt.wav" #use zero_shot model
-        # ref_audio_text: "希望你以后能够做的比我还好呦。"
-        sample_rate: 24000
-        process_num: 2
+        
+        # 方式一：本地推理（推荐）
+        model_name: "iic/CosyVoice-300M-SFT"  # CosyVoice模型路径
+        spk_id: "中文女"                       # 预设音色：中文女、中文男等
+        sample_rate: 24000                    # 输出音频采样率
+        process_num: 2                        # 处理进程数
+        
+        # 方式二：远程CosyVoice服务器（可选）
+        # api_url: 'http://127.0.0.1:50000/inference_sft'  # 运行server.py
+        
+        # 方式三：音色克隆（与spk_id互斥）
+        # ref_audio_path: "path/to/reference.wav"     # 参考音频路径
+        # ref_audio_text: "参考音频对应的文字内容"      # 参考音频文本
+        
+      # ====================================================================
+      # LLM Handler - 大语言模型（需要API）
+      # ====================================================================
       LLMOpenAICompatible:
         enabled: True
         module: llm/openai_compatible/llm_handler_openai_compatible
-        model_name: "qwen-plus"
-        enable_video_input: False # ensure your llm support video input
-        history_length: 20
-        # model_name: "gemini-2.0-flash"
+        model_name: "qwen-plus"              # 推荐模型：qwen-plus, qwen-max
+        enable_video_input: False            # 是否启用视频输入（需模型支持）
+        history_length: 20                   # 对话历史保留条数
         system_prompt: "请你扮演一个 AI 助手，用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号，不需要讨论标点符号相关的内容"
-        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        # api_url: 'http://127.0.0.1:11434/v1' # ollama
-        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/'
-        # api_key: '' # default=os.getenv("DASHSCOPE_API_KEY")
+        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 百炼API地址
+        
+        # 其他可选API：
+        # api_url: 'http://127.0.0.1:11434/v1'                      # Ollama本地API
+        # api_url: 'https://generativelanguage.googleapis.com/v1beta/openai/' # Google Gemini
+        # api_url: 'https://api.deepseek.com'                       # DeepSeek API
+        # api_key: ''  # API Key，留空从对应环境变量读取
+        
+      # ====================================================================
+      # Avatar Handler - 2D数字人渲染（服务端GPU渲染）
+      # ====================================================================
       LiteAvatar:
         module: avatar/liteavatar/avatar_handler_liteavatar
-        avatar_name: 20250408/sample_data
-        fps: 25
-        debug: false
-        enable_fast_mode: false
-        use_gpu: true
+        avatar_name: 20250408/sample_data    # 数字人形象名称
+        fps: 25                             # 渲染帧率
+        debug: false                        # 调试模式开关
+        enable_fast_mode: false             # 快速模式开关
+        use_gpu: true                       # 是否使用GPU渲染

@@ -1,5 +1,4 @@
 
-
 import base64
 from io import BytesIO
 import os
@@ -59,8 +58,11 @@ class ImageUtils:
         # if video_frame.dtype != np.uint8:
         #     video_frame = (video_frame * 255).astype(np.uint8)
 
+        # 🎯 智能图像优化：自动适配AI模型的最佳处理尺寸
+        optimized_frame = ImageUtils._optimize_for_ai_analysis(video_frame)
+
         # 将 NumPy 数组转换为 PIL 图像对象
-        image = PIL.Image.fromarray(np.squeeze(video_frame)[..., ::-1])
+        image = PIL.Image.fromarray(np.squeeze(optimized_frame)[..., ::-1])
 
         # 创建一个内存缓冲区
         buffered = BytesIO()
@@ -80,11 +82,164 @@ class ImageUtils:
         return data_url
     
     @staticmethod
+    def _optimize_for_ai_analysis(video_frame):
+        """
+        智能优化视频帧以提高AI分析效果
+        
+        策略：
+        1. 自动检测图像来源（摄像头vs屏幕共享）
+        2. 根据来源应用不同的优化策略
+        3. 确保AI模型能够正确识别内容
+        """
+        import cv2
+        
+        # 获取原始尺寸 - 正确处理批次维度
+        if len(video_frame.shape) == 4:
+            # 格式: (batch, height, width, channels)
+            batch_size, height, width, channels = video_frame.shape
+            if batch_size == 1:
+                video_frame = video_frame.squeeze(0)  # 移除批次维度
+            logger.debug(f"🔍 检测到批次格式图像，移除批次维度: {video_frame.shape}")
+        elif len(video_frame.shape) == 3:
+            # 格式: (height, width, channels)
+            height, width, channels = video_frame.shape
+        else:
+            # 格式: (height, width) - 灰度图
+            height, width = video_frame.shape
+            channels = 1
+            
+        logger.info(f"🖼️ AI图像优化 - 原始尺寸: {width}x{height}, 通道数: {channels}")
+        logger.debug(f"📊 图像形状详情: {video_frame.shape}")
+        
+        # 检测图像来源类型
+        is_screen_share = ImageUtils._detect_screen_share_content(video_frame, width, height)
+        
+        if is_screen_share:
+            # 屏幕共享内容的优化策略
+            logger.info("📺 检测到屏幕共享内容，应用屏幕优化策略")
+            optimized = ImageUtils._optimize_screen_content(video_frame)
+        else:
+            # 摄像头内容的优化策略  
+            logger.info("📷 检测到摄像头内容，应用人像优化策略")
+            optimized = ImageUtils._optimize_camera_content(video_frame)
+            
+        opt_height, opt_width = optimized.shape[:2]
+        logger.info(f"✨ AI图像优化完成 - 优化后尺寸: {opt_width}x{opt_height}")
+        
+        return optimized
+    
+    @staticmethod
+    def _detect_screen_share_content(frame, width, height):
+        """
+        检测是否为屏幕共享内容
+        
+        启发式判断：
+        1. 尺寸比例（屏幕共享通常是宽屏比例）
+        2. 边缘密度（屏幕内容通常有更多锐利边缘）
+        3. 颜色分布（屏幕内容通常有特定的颜色模式）
+        """
+        # 1. 尺寸比例检测
+        aspect_ratio = width / height
+        is_widescreen = aspect_ratio > 1.5  # 宽屏比例暗示屏幕共享
+        
+        # 2. 边缘密度检测（屏幕内容通常有更多文字和UI元素）
+        import cv2
+        
+        # 安全的颜色转换：检查输入图像通道数
+        if len(frame.shape) == 3 and frame.shape[2] == 3:
+            # BGR彩色图像，转换为灰度
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        elif len(frame.shape) == 2 or (len(frame.shape) == 3 and frame.shape[2] == 1):
+            # 已经是灰度图像
+            gray = frame.squeeze() if len(frame.shape) == 3 else frame
+        else:
+            # 其他格式，尝试获取第一个通道作为灰度
+            gray = frame[:, :, 0] if len(frame.shape) == 3 else frame
+        
+        edges = cv2.Canny(gray.astype(np.uint8), 50, 150)
+        edge_density = np.sum(edges > 0) / (width * height)
+        is_high_edge_density = edge_density > 0.05  # 高边缘密度暗示屏幕内容
+        
+        # 3. 亮度分布检测（屏幕内容通常亮度更均匀）
+        brightness_std = np.std(gray)
+        is_uniform_brightness = brightness_std > 30  # 适中的亮度变化
+        
+        # 综合判断
+        screen_indicators = sum([is_widescreen, is_high_edge_density, is_uniform_brightness])
+        is_screen_content = screen_indicators >= 2  # 至少2个指标支持
+        
+        logger.debug(f"🔍 屏幕内容检测 - 宽屏:{is_widescreen}, 边缘:{is_high_edge_density}, 亮度:{is_uniform_brightness} -> {is_screen_content}")
+        
+        return is_screen_content
+    
+    @staticmethod  
+    def _optimize_screen_content(frame):
+        """
+        屏幕共享内容优化策略
+        
+        目标：保持文字清晰度，适度缩放以适应AI处理
+        """
+        import cv2
+        
+        height, width = frame.shape[:2]
+        
+        # 智能缩放策略：保持文字可读性
+        # 目标：让AI既能看到全局布局，又能识别文字内容
+        if width > 1200:
+            # 大屏幕内容，缩放到合理尺寸但保持可读性
+            scale_factor = 800 / width  # 缩放到800px宽度
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            
+            # 使用LANCZOS插值保持文字清晰度
+            optimized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
+            logger.info(f"📺 屏幕内容缩放: {width}x{height} -> {new_width}x{new_height}")
+        else:
+            # 尺寸已经合适，直接使用
+            optimized = frame.copy()
+            logger.info("📺 屏幕内容尺寸合适，无需缩放")
+        
+        # 可选：增强对比度以改善文字识别
+        # optimized = cv2.convertScaleAbs(optimized, alpha=1.1, beta=10)
+        
+        return optimized
+    
+    @staticmethod
+    def _optimize_camera_content(frame):
+        """
+        摄像头内容优化策略
+        
+        目标：人像识别优化，保持面部特征清晰
+        """
+        import cv2
+        
+        height, width = frame.shape[:2]
+        
+        # 摄像头内容通常已经是合适的尺寸（500x500或类似）
+        # 但确保不会太大影响AI处理速度
+        max_size = 600
+        if width > max_size or height > max_size:
+            if width > height:
+                new_width = max_size
+                new_height = int(height * (max_size / width))
+            else:
+                new_height = max_size  
+                new_width = int(width * (max_size / height))
+                
+            optimized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            logger.info(f"📷 人像内容缩放: {width}x{height} -> {new_width}x{new_height}")
+        else:
+            optimized = frame.copy()
+            logger.info("📷 人像内容尺寸合适，无需缩放")
+            
+        return optimized
+    
+    @staticmethod
     def save_base64_image(base64_data, output_path):
         """
         将 Base64 编码的图片保存为本地文件。
 
-        :param base64_data: Base64 编码的图片字符串（不包括头部信息）
+        :param base_data: Base64 编码的图片字符串（不包括头部信息）
         :param output_path: 保存图片的本地路径（包含文件名和扩展名）
         """
         try:
